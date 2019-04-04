@@ -272,7 +272,3 @@ class QAuthor:
 
         dispatcher.add_handler(CallbackQueryHandler(self.__game_folder_button, pattern='^puzzname'))
         dispatcher.add_handler(MessageHandler(~Filters.command, self.__data_getter))
-
-
-auth = QAuthor("./configs/qauthor_config.yaml")
-auth.start_polling()
