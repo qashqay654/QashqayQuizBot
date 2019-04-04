@@ -23,13 +23,10 @@ class QAuthorConfig:
             self.save_media = bool(config['save_media'])
             self.user_db_path = config['user_db_path']
 
-    def __str__(self):
-        return self.working_path + " " + self.logger_path + " " + str(self.save_media)
-
 
 class QAuthor:
 
-    def __init__(self, config_path):
+    def __init__(self, config_path: str):
         self.config = QAuthorConfig(config_path)
 
         puzzles_db = PicklePersistence(filename=self.config.user_db_path)

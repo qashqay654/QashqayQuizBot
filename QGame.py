@@ -1,16 +1,53 @@
+import logging
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, PicklePersistence, CallbackQueryHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import yaml
 
 from QReadWrite import QReadWrite
 from QTypes import AnswerCorrectness
 
 
-class QGame:
-    config = None
-    logger = None
+class QGameConfig:
+    working_path = ""
+    logger_path = ""
+    token = ""
+    user_db_path = ""
+    no_spoilers = True
 
-    def __init__(self):
-        pass
+    def __init__(self, config):
+        with open(config, 'r') as handle:
+            config = yaml.load(handle, Loader=yaml.BaseLoader)
+
+            self.working_path = config['working_path']
+            self.logger_path = config['logger_path']
+            self.token = config['token']
+            self.user_db_path = config['user_db_path']
+            self.no_spoilers = bool(config['no_spoilers'])
+
+
+class QGame:
+
+    def __init__(self, config_path: str):
+        self.config = QGameConfig(config_path)
+
+        puzzles_db = PicklePersistence(filename=self.config.user_db_path)
+        self.updater = Updater(self.config.token, use_context=True, persistence=puzzles_db)
+        self.init_dispatcher(self.updater.dispatcher)
+        logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                            level=logging.INFO,
+                            filename=self.config.logger_path,
+                            filemode='a'
+                            )
+        self.logger = logging.getLogger(__name__)
+
+    def start_polling(self, demon=False):
+        self.updater.start_polling()
+        if not demon:
+            self.updater.idle()
+
+    def stop_polling(self):
+        self.updater.stop()
+
 
     def __get_chat_meta(self, update, context):
         if update.message.chat.type == 'private':
@@ -26,7 +63,7 @@ class QGame:
             #    metadata['questions'][metadata['game_type']] = Questions(
             #        update.message.from_user.language_code, 0)
             if 'no_spoiler' not in metadata.keys():
-                metadata['no_spoiler'] = True
+                metadata['no_spoiler'] = self.config.no_spoilers
             if 'message_stack' not in metadata.keys():
                 metadata['question_message_stack'] = []
         return metadata
@@ -46,7 +83,7 @@ class QGame:
             metadata['game_type'] = "manul_puzzle"
             metadata['quiz'] = {}
             metadata['quiz'][metadata['game_type']] = Questions(0)
-            metadata['no_spoiler'] = True
+            metadata['no_spoiler'] = self.config.no_spoilers
             metadata['message_stack'] = []
 
             reply_text = ('Hi! Welcome to the game!\n'
@@ -252,3 +289,26 @@ class QGame:
             reply_markup=self.__settings_main_markup()
         )
 
+    def init_dispatcher(self, dispatcher):
+        dispatcher.add_handler(CommandHandler("start", self.__start,
+                                      pass_user_data=True, pass_chat_data=True))
+        dispatcher.add_handler(CommandHandler("hint", self.__hint,
+                                      pass_user_data=True, pass_chat_data=True))
+        dispatcher.add_handler(CommandHandler("answer", self.__answer,
+                                      pass_args=True, pass_user_data=True, pass_chat_data=True))
+        dispatcher.add_handler(CommandHandler("repeat", self.__question,
+                                      pass_user_data=True, pass_chat_data=True))
+
+        dispatcher.add_handler(CommandHandler("reset", self.__reset,
+                                      pass_user_data=True, pass_chat_data=True))
+        dispatcher.add_handler(CallbackQueryHandler(self.__reset_button, pattern='^reset-'))
+
+        dispatcher.add_handler(CommandHandler("settings", self.__settings))
+        dispatcher.add_handler(CallbackQueryHandler(self.__settings_main, pattern='main'))
+        dispatcher.add_handler(CallbackQueryHandler(self.__settings_done, pattern='done'))
+        dispatcher.add_handler(CallbackQueryHandler(self.__settings_spoiler, pattern='^m2-'))
+        dispatcher.add_handler(CallbackQueryHandler(self.__settings_spoiler_button, pattern='^m2_1-'))
+        dispatcher.add_handler(CallbackQueryHandler(self.__settings_game, pattern='^m3-'))
+        dispatcher.add_handler(CallbackQueryHandler(self.__settings_game_button, pattern='^puzzname'))
+
+        dispatcher.add_error_handler(self.__error)
