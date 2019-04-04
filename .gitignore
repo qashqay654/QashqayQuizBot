@@ -1,5 +1,5 @@
-/Users/alexandersologub/PycharmProjects/QashqayQuiz/game
-/Users/alexandersologub/PycharmProjects/QashqayQuiz/logs
-/Users/alexandersologub/PycharmProjects/QashqayQuiz/users_data
-/Users/alexandersologub/PycharmProjects/QashqayQuiz/__pycache__
-/Users/alexandersologub/PycharmProjects/QashqayQuiz/.idea
+./game
+./logs
+./users_data
+./__pycache__
+./.idea
