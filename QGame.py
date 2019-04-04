@@ -9,6 +9,7 @@ from QQuizKernel import QQuizKernel
 
 
 class QGameConfig:
+    working_dir = ""
     default_game = ""
     logger_path = ""
     token = ""
@@ -18,18 +19,19 @@ class QGameConfig:
     def __init__(self, config):
         with open(config, 'r') as handle:
             config = yaml.load(handle, Loader=yaml.BaseLoader)
+            self.working_dir = config['working_dir']
             self.default_game = config['default_game']
             self.logger_path = config['logger_path']
             self.token = config['token']
             self.user_db_path = config['user_db_path']
-            self.no_spoilers_default = bool(config['no_spoilers_default'])
+            self.no_spoilers_default = bool(int(config['no_spoilers_default']))
 
 
 class QGame:
 
     def __init__(self, config_path: str):
         self.config = QGameConfig(config_path)
-
+        print('started')
         puzzles_db = PicklePersistence(filename=self.config.user_db_path)
         self.updater = Updater(self.config.token, use_context=True, persistence=puzzles_db)
         self.init_dispatcher(self.updater.dispatcher)
@@ -59,7 +61,7 @@ class QGame:
                 metadata['game_type'] = self.config.default_game
             if 'quiz' not in metadata.keys():
                 metadata['quiz'] = {}
-                metadata['quiz'][metadata['game_type']] = QQuizKernel(metadata['game_type'])
+                metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir, metadata['game_type'])
             if 'no_spoiler' not in metadata.keys():
                 metadata['no_spoiler'] = self.config.no_spoilers_default
             if 'message_stack' not in metadata.keys():
@@ -80,7 +82,7 @@ class QGame:
         if not metadata:
             metadata['game_type'] = self.config.default_game
             metadata['quiz'] = {}
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(metadata['game_type'])
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir, metadata['game_type'])
             metadata['no_spoiler'] = self.config.no_spoilers_default if update.message.chat.type != 'private' else False
             metadata['message_stack'] = []
 
@@ -96,9 +98,8 @@ class QGame:
 
             metadata['message_stack'].append(
                 context.bot.sendMessage(chat_id=chat_id, text=reply_text))
-
-        question = metadata['quiz'][metadata['game_type']].get_new_question()
-        QReadWrite.send(question, context.bot, chat_id, preview=False)  # TODO: add folder path
+        question, path = metadata['quiz'][metadata['game_type']].get_new_question()
+        QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
     def __question(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -106,9 +107,9 @@ class QGame:
             return
         chat_id = update.message.chat_id
         metadata['message_stack'].append(update.message)
-        question = metadata['quiz'][metadata['game_type']].get_new_question()
+        question, path = metadata['quiz'][metadata['game_type']].get_new_question()
 
-        QReadWrite.send(question, context.bot, chat_id, preview=False)  # TODO: add folder path
+        QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
     def __hint(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -121,7 +122,6 @@ class QGame:
         metadata['message_stack'].append(context.bot.sendMessage(chat_id=chat_id, text=help_reply))
 
     def __answer(self, update, context):
-        print('in answer')
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
@@ -147,8 +147,8 @@ class QGame:
             metadata['message_stack'].clear()
 
             metadata['quiz'][metadata['game_type']].next()
-            question = metadata['quiz'][metadata['game_type']].get_new_question()
-            QReadWrite.send(question, context.bot, chat_id, preview=False)  # TODO: add folder path
+            question, path = metadata['quiz'][metadata['game_type']].get_new_question()
+            QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
         elif type(correctness) == str:
             metadata['message_stack'].append(
@@ -186,9 +186,8 @@ class QGame:
         if bool(button):
             query.message.delete()
             metadata['quiz'][metadata['game_type']].reset()
-            question = metadata['quiz'][metadata['game_type']
-            ].get_new_question()
-            QReadWrite.send(question, context.bot, chat_id, preview=False)  # TODO: add folder path
+            question, path = metadata['quiz'][metadata['game_type']].get_new_question()
+            QReadWrite.send(question, context.bot, chat_id, path, preview=False)
         else:
             query.message.delete()
 
@@ -282,7 +281,7 @@ class QGame:
             metadata['game_type'] = button
         else:
             metadata['game_type'] = button
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(metadata['game_type'])
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir, metadata['game_type'])
 
         query.answer(text='New game mode ' + button)
         query.edit_message_text(

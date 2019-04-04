@@ -20,7 +20,7 @@ class QAuthorConfig:
             self.working_path = config['working_path']
             self.logger_path = config['logger_path']
             self.token = config['token']
-            self.save_media = bool(config['save_media'])
+            self.save_media = bool(int(config['save_media']))
             self.user_db_path = config['user_db_path']
 
 
@@ -111,7 +111,7 @@ class QAuthor:
             return
         metadata['action'] = None
         update.message.reply_text(text='Thanx!')
-        filename = QReadWrite.save_to_file(metadata['puzzle_buffer'][-1], metadata['answer_buffer'][from_user][-1],
+        filename = QReadWrite.save_to_file(metadata['puzzle_buffer'][from_user][-1], metadata['answer_buffer'][from_user][-1],
                                                   update.message.from_user, metadata,
                                                   puzzle_dir=self.config.working_path,
                                                   bot=context.bot,
@@ -151,7 +151,7 @@ class QAuthor:
             hint = "Hint: "
             sep_h = ''
             for answ in metadata['answer_buffer'][from_user][-1]:
-                if answ.startswith('~'):
+                if answ.startswith('~') and len(answ[1:].split('~')) == 2:
                     temp = answ[1:].split('~')
                     guess += sep_g + temp[0] + ' "' + temp[1] + '"'
                     sep_g = ', '

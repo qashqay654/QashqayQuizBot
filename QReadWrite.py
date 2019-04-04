@@ -44,7 +44,7 @@ class QReadWrite:
         buffer.append(message.text)
 
     @staticmethod
-    def send(buffer, bot, chat_id, puzzle_dir=None, preview=True):
+    def send(buffer, bot, chat_id, puzzle_dir=None, preview=True): #TODO: add name
         for message in buffer:
             message_type = message[0]
             first_field = message[1]
