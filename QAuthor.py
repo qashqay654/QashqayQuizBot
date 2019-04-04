@@ -40,7 +40,7 @@ class QAuthor:
         logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                             level=logging.INFO,
                             filename=self.config.logger_path,
-                            filemode='w'
+                            filemode='a'
                             )
         self.logger = logging.getLogger(__name__)
 
