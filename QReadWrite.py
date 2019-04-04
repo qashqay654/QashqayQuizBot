@@ -104,7 +104,7 @@ class QReadWrite:
         return filename_q
 
     @staticmethod
-    def parse_game_folders_markup(update, parent):
+    def parse_game_folders_markup(parent):
         dirs = os.listdir(parent)
         keyboard = [[]]
         for dr in dirs:

@@ -231,8 +231,7 @@ class QAuthor:
 
     def __set_game_folder(self, update, context):
         update.message.reply_text(text='Choose game',
-                                  reply_markup=QReadWrite.parse_game_folders_markup(update,
-                                                                                           self.config.working_path))
+                                  reply_markup=QReadWrite.parse_game_folders_markup(self.config.working_path))
 
     def __game_folder_button(self, update, context):
         query = update.callback_query
