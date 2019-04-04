@@ -30,8 +30,6 @@ class QAuthorConfig:
 class QAuthor:
 
     def __init__(self, config_path):
-        self.puzzle_buffer = defaultdict(list)
-        self.answer_buffer = defaultdict(list)
         self.config = QAuthorConfig(config_path)
 
         puzzles_db = PicklePersistence(filename=self.config.user_db_path)
@@ -44,7 +42,7 @@ class QAuthor:
                             )
         self.logger = logging.getLogger(__name__)
 
-    def start_polling(self, demon=True):
+    def start_polling(self, demon=False):
         self.updater.start_polling()
         if not demon:
             self.updater.idle()
@@ -62,6 +60,8 @@ class QAuthor:
     def __start(self, update, context):
         metadata = self.__get_chat_meta(update, context)
         if not metadata:
+            metadata['puzzle_buffer'] = defaultdict(list)
+            metadata['answer_buffer'] = defaultdict(list)
             metadata['action'] = None
             metadata['question_num'] = defaultdict(int)
             metadata["puzzle_folder"] = "random_flood"
@@ -84,12 +84,12 @@ class QAuthor:
         metadata['action'] = 'question'
         name = '_'.join(context.args)
         metadata['name'] = name
-        self.puzzle_buffer[from_user].append([])
-        self.answer_buffer[from_user].append([])
-        if len(self.puzzle_buffer[from_user]) > 1:
-            self.puzzle_buffer[from_user].pop(0)
-        if len(self.answer_buffer[from_user]) > 1:
-            self.answer_buffer[from_user].pop(0)
+        metadata['puzzle_buffer'][from_user].append([])
+        metadata['answer_buffer'][from_user].append([])
+        if len(metadata['puzzle_buffer'][from_user]) > 1:
+            metadata['puzzle_buffer'][from_user].pop(0)
+        if len(metadata['answer_buffer'][from_user]) > 1:
+            metadata['answer_buffer'][from_user].pop(0)
         update.message.reply_text(
             text="Go ahead! Send your puzzle as a normal messages and then write /setanswer")
 
@@ -97,10 +97,10 @@ class QAuthor:
         from_user = update.message.from_user.id
         metadata = self.__get_chat_meta(update, context)
         if metadata['action'] == 'question':
-            QReadWrite.push_puzzle(update.message, self.puzzle_buffer[from_user][-1])
+            QReadWrite.push_puzzle(update.message, metadata['puzzle_buffer'][from_user][-1])
         elif metadata['action'] == 'answer':
             if update.message.text:
-                QReadWrite.push_answer(update.message, self.answer_buffer[from_user][-1])
+                QReadWrite.push_answer(update.message, metadata['answer_buffer'][from_user][-1])
             else:
                 update.message.reply_text(
                     text="In current version answer can be only a text")
@@ -108,13 +108,13 @@ class QAuthor:
     def __end(self, update, context):
         metadata = self.__get_chat_meta(update, context)
         from_user = update.message.from_user.id
-        if metadata['action'] != 'answer' or len(self.answer_buffer[from_user][-1]) < 1:
+        if metadata['action'] != 'answer' or len(metadata['answer_buffer'][from_user][-1]) < 1:
             update.message.reply_text(
                 text="Please specify answer first /setanswer or start new question /new")
             return
         metadata['action'] = None
         update.message.reply_text(text='Thanx!')
-        filename = QReadWrite.save_to_file(self.puzzle_buffer[from_user][-1], self.answer_buffer[from_user][-1],
+        filename = QReadWrite.save_to_file(metadata['puzzle_buffer'][-1], metadata['answer_buffer'][from_user][-1],
                                                   update.message.from_user, metadata,
                                                   puzzle_dir=self.config.working_path,
                                                   bot=context.bot,
@@ -126,7 +126,7 @@ class QAuthor:
     def __set_answer(self, update, context):
         from_user = update.message.from_user.id
         metadata = self.__get_chat_meta(update, context)
-        if metadata['action'] != 'question' or len(self.puzzle_buffer[from_user][-1]) == 0:
+        if metadata['action'] != 'question' or len(metadata['puzzle_buffer'][from_user][-1]) == 0:
             update.message.reply_text(
                 text="Please begin question or finish previous answer /new or /end")
             return
@@ -141,8 +141,8 @@ class QAuthor:
         if metadata['name']:
             update.message.reply_text(
                 text="Name: " + " ".join(metadata['name'].split('_')))
-        if len(self.puzzle_buffer[from_user][-1]) > 0:
-            QReadWrite.send(self.puzzle_buffer[from_user][-1], context.bot,
+        if len(metadata['puzzle_buffer'][from_user][-1]) > 0:
+            QReadWrite.send(metadata['puzzle_buffer'][from_user][-1], context.bot,
                                    update.message.chat_id, preview=True)
         else:
             update.message.reply_text(text="Nothing in buffer")
@@ -153,7 +153,7 @@ class QAuthor:
             sep_g = ''
             hint = "Hint: "
             sep_h = ''
-            for answ in self.answer_buffer[from_user][-1]:
+            for answ in metadata['answer_buffer'][from_user][-1]:
                 if answ.startswith('~'):
                     temp = answ[1:].split('~')
                     guess += sep_g + temp[0] + ' "' + temp[1] + '"'
@@ -180,12 +180,12 @@ class QAuthor:
     def __delete_last_update(self, update, context):
         from_user = update.message.from_user.id
         metadata = self.__get_chat_meta(update, context)
-        if metadata['action'] == 'question' and len(self.puzzle_buffer[from_user][-1]) > 0:
-            del self.puzzle_buffer[from_user][-1][-1]
+        if metadata['action'] == 'question' and len(metadata['puzzle_buffer'][from_user][-1]) > 0:
+            del metadata['puzzle_buffer'][from_user][-1][-1]
             update.message.reply_text(text='Successfully deleted from buffer')
             return
-        if metadata['action'] == 'answer' and len(self.answer_buffer[from_user][-1]) > 0:
-            del self.answer_buffer[from_user][-1][-1]
+        if metadata['action'] == 'answer' and len(metadata['answer_buffer'][from_user][-1]) > 0:
+            del metadata['answer_buffer'][from_user][-1][-1]
             update.message.reply_text(text='Successfully deleted from buffer')
             return
         update.message.reply_text(text='Nothing to delete')
@@ -194,14 +194,14 @@ class QAuthor:
         from_user = update.message.from_user.id
         metadata = self.__get_chat_meta(update, context)
         smth_del = False
-        if metadata['action'] == 'question' and len(self.puzzle_buffer[from_user]) > 0:
-            del self.puzzle_buffer[from_user][-1]
+        if metadata['action'] == 'question' and len(metadata['puzzle_buffer'][from_user]) > 0:
+            del metadata['puzzle_buffer'][from_user][-1]
             update.message.reply_text(
                 text='Successfully deleted full question from buffer')
             smth_del = True
-        if metadata['action'] == 'answer' and len(self.answer_buffer[from_user]) > 0:
-            del self.puzzle_buffer[from_user][-1]
-            del self.answer_buffer[from_user][-1]
+        if metadata['action'] == 'answer' and len(metadata['answer_buffer'][from_user]) > 0:
+            del metadata['puzzle_buffer'][from_user][-1]
+            del metadata['answer_buffer'][from_user][-1]
             update.message.reply_text(
                 text='Successfully deleted full question from buffer')
             smth_del = True
@@ -222,8 +222,8 @@ class QAuthor:
         from_user = update.message.from_user.id
         metadata = self.__get_chat_meta(update, context)
         metadata['action'] = None
-        self.puzzle_buffer[from_user] = []
-        self.answer_buffer[from_user] = []
+        metadata['puzzle_buffer'][from_user] = []
+        metadata['answer_buffer'][from_user] = []
 
     def __get_current_state(self, update, context):
         metadata = self.__get_chat_meta(update, context)
