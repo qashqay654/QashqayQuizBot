@@ -5,24 +5,24 @@ import yaml
 
 from QReadWrite import QReadWrite
 from QTypes import AnswerCorrectness
+from QQuizKernel import QQuizKernel
 
 
 class QGameConfig:
-    working_path = ""
+    default_game = ""
     logger_path = ""
     token = ""
     user_db_path = ""
-    no_spoilers = True
+    no_spoilers_default = True
 
     def __init__(self, config):
         with open(config, 'r') as handle:
             config = yaml.load(handle, Loader=yaml.BaseLoader)
-
-            self.working_path = config['working_path']
+            self.default_game = config['default_game']
             self.logger_path = config['logger_path']
             self.token = config['token']
             self.user_db_path = config['user_db_path']
-            self.no_spoilers = bool(config['no_spoilers'])
+            self.no_spoilers_default = bool(config['no_spoilers_default'])
 
 
 class QGame:
@@ -48,7 +48,6 @@ class QGame:
     def stop_polling(self):
         self.updater.stop()
 
-
     def __get_chat_meta(self, update, context):
         if update.message.chat.type == 'private':
             metadata = context.user_data
@@ -57,15 +56,14 @@ class QGame:
 
         if metadata:
             if 'game_type' not in metadata.keys():
-                metadata['game_type'] = "manul_puzzle"
-            # if 'questions' not in metadata.keys():
-            #    metadata['questions'] = {}
-            #    metadata['questions'][metadata['game_type']] = Questions(
-            #        update.message.from_user.language_code, 0)
+                metadata['game_type'] = self.config.default_game
+            if 'quiz' not in metadata.keys():
+                metadata['quiz'] = {}
+                metadata['quiz'][metadata['game_type']] = QQuizKernel(metadata['game_type'])
             if 'no_spoiler' not in metadata.keys():
-                metadata['no_spoiler'] = self.config.no_spoilers
+                metadata['no_spoiler'] = self.config.no_spoilers_default
             if 'message_stack' not in metadata.keys():
-                metadata['question_message_stack'] = []
+                metadata['message_stack'] = []
         return metadata
 
     def __check_meta(self, metadata, update):
@@ -80,10 +78,10 @@ class QGame:
         chat_id = update.message.chat_id
 
         if not metadata:
-            metadata['game_type'] = "manul_puzzle"
+            metadata['game_type'] = self.config.default_game
             metadata['quiz'] = {}
-            metadata['quiz'][metadata['game_type']] = Questions(0)
-            metadata['no_spoiler'] = self.config.no_spoilers
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(metadata['game_type'])
+            metadata['no_spoiler'] = self.config.no_spoilers_default if update.message.chat.type != 'private' else False
             metadata['message_stack'] = []
 
             reply_text = ('Hi! Welcome to the game!\n'
@@ -100,7 +98,7 @@ class QGame:
                 context.bot.sendMessage(chat_id=chat_id, text=reply_text))
 
         question = metadata['quiz'][metadata['game_type']].get_new_question()
-        QReadWrite.send(question, context.bot, chat_id, )  # TODO: add folder path
+        QReadWrite.send(question, context.bot, chat_id, preview=False)  # TODO: add folder path
 
     def __question(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -110,7 +108,7 @@ class QGame:
         metadata['message_stack'].append(update.message)
         question = metadata['quiz'][metadata['game_type']].get_new_question()
 
-        QReadWrite.send(question, context.bot, chat_id, )  # TODO: add folder path
+        QReadWrite.send(question, context.bot, chat_id, preview=False)  # TODO: add folder path
 
     def __hint(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -123,6 +121,7 @@ class QGame:
         metadata['message_stack'].append(context.bot.sendMessage(chat_id=chat_id, text=help_reply))
 
     def __answer(self, update, context):
+        print('in answer')
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
@@ -130,6 +129,8 @@ class QGame:
         chat_id = update.message.chat_id
         metadata['message_stack'].append(update.message)
 
+        for msg in metadata['message_stack']:
+            self.logger.info('%s', msg)
         answer = ' '.join(context.args).lower()
         if not answer:
             metadata['message_stack'].append(
@@ -139,15 +140,15 @@ class QGame:
         if correctness == AnswerCorrectness.CORRECT:
             if metadata['no_spoiler']:
                 for msg in metadata['message_stack']:
-                    try:
-                        context.bot.deleteMessage(msg.chat_id, msg.message_id)
-                    except:
-                        self.logger.warning('No message "%s"', msg)
+                    #try:
+                    context.bot.deleteMessage(msg.chat_id, msg.message_id)
+                    #except:
+                    #    self.logger.warning('No message "%s"', msg)
             metadata['message_stack'].clear()
 
             metadata['quiz'][metadata['game_type']].next()
             question = metadata['quiz'][metadata['game_type']].get_new_question()
-            QReadWrite.send(question, context.bot, chat_id, )  # TODO: add folder path
+            QReadWrite.send(question, context.bot, chat_id, preview=False)  # TODO: add folder path
 
         elif type(correctness) == str:
             metadata['message_stack'].append(
@@ -187,7 +188,7 @@ class QGame:
             metadata['quiz'][metadata['game_type']].reset()
             question = metadata['quiz'][metadata['game_type']
             ].get_new_question()
-            QReadWrite.send(question, context.bot, chat_id, )  # TODO: add folder path
+            QReadWrite.send(question, context.bot, chat_id, preview=False)  # TODO: add folder path
         else:
             query.message.delete()
 
@@ -234,7 +235,7 @@ class QGame:
                                 reply_markup=self.__settings_spoiler_markup())
 
     def __settings_spoiler_text(self, status):
-        return "Dissapearing mode will delete all old answers and questions" + " (now " + str(status) + ")"
+        return "No spoiler mode will delete all old answers and questions" + " (now " + str(status) + ")"
 
     def __settings_spoiler_markup(self):
         keyboard = [[InlineKeyboardButton("On", callback_data='m2_1-1'),
@@ -251,7 +252,7 @@ class QGame:
             return
         button = bool(int(query.data.split('-')[-1]))
         metadata['no_spoiler'] = button
-        query.answer(text="Successfully set dissapearing mode" if button else "Successfully unset dissapearing mode")
+        query.answer(text="Successfully set no spoiler mode" if button else "Successfully unset no spoiler mode")
         query.edit_message_text(
             text=self.__settings_main_text(),
             reply_markup=self.__settings_main_markup()
@@ -264,9 +265,9 @@ class QGame:
         metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
         if not metadata:
             return
-        language = metadata['quiz'][metadata['game_type']].language
+        reply_markup = metadata['quiz'][metadata['game_type']].all_game_types_markup()
         query.edit_message_text(text=self.__settings_game_text(metadata['game_type']),
-                                reply_markup=QReadWrite.parse_game_folders_markup(self.config.working_path))
+                                reply_markup=reply_markup)
 
     def __settings_game_text(self, status):
         return "What type of the game you want?" + " (now " + str(status) + ")"
@@ -281,7 +282,7 @@ class QGame:
             metadata['game_type'] = button
         else:
             metadata['game_type'] = button
-            metadata['questions'][metadata['game_type']] = Questions(0)
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(metadata['game_type'])
 
         query.answer(text='New game mode ' + button)
         query.edit_message_text(
@@ -291,16 +292,16 @@ class QGame:
 
     def init_dispatcher(self, dispatcher):
         dispatcher.add_handler(CommandHandler("start", self.__start,
-                                      pass_user_data=True, pass_chat_data=True))
+                                              pass_user_data=True, pass_chat_data=True))
         dispatcher.add_handler(CommandHandler("hint", self.__hint,
-                                      pass_user_data=True, pass_chat_data=True))
+                                              pass_user_data=True, pass_chat_data=True))
         dispatcher.add_handler(CommandHandler("answer", self.__answer,
-                                      pass_args=True, pass_user_data=True, pass_chat_data=True))
+                                              pass_args=True, pass_user_data=True, pass_chat_data=True))
         dispatcher.add_handler(CommandHandler("repeat", self.__question,
-                                      pass_user_data=True, pass_chat_data=True))
+                                              pass_user_data=True, pass_chat_data=True))
 
         dispatcher.add_handler(CommandHandler("reset", self.__reset,
-                                      pass_user_data=True, pass_chat_data=True))
+                                              pass_user_data=True, pass_chat_data=True))
         dispatcher.add_handler(CallbackQueryHandler(self.__reset_button, pattern='^reset-'))
 
         dispatcher.add_handler(CommandHandler("settings", self.__settings))
@@ -312,3 +313,4 @@ class QGame:
         dispatcher.add_handler(CallbackQueryHandler(self.__settings_game_button, pattern='^puzzname'))
 
         dispatcher.add_error_handler(self.__error)
+        # TODO: add random talk
