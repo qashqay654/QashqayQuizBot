@@ -22,7 +22,7 @@ class QQuizKernel:
         self.config = QQuizKernelConfig(os.path.join(working_dir, game_mode))
 
         self.levels = sorted([dr for dr in os.listdir(self.working_dir) \
-                       if os.path.isdir(os.path.join(self.working_dir, dr))])
+                              if os.path.isdir(os.path.join(self.working_dir, dr))])
         self._last_question_num = 0
         self.puzzle_dir = os.path.join(self.working_dir, self.levels[self._last_question_num])
 

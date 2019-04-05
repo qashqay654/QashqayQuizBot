@@ -25,7 +25,7 @@ class QAuthorConfig:
 
 
 class QAuthor:
-
+    __name__ = "QAuthor"
     def __init__(self, config_path: str):
         self.config = QAuthorConfig(config_path)
 
@@ -78,9 +78,14 @@ class QAuthor:
             update.message.reply_text(
                 text='Please finish your question or answer /setanswer or /end')
             return
-        metadata['action'] = 'question'
+
         name = '_'.join(context.args)
-        metadata['name'] = name
+        if self.__check_name(name):
+            metadata['name'] = name
+        else:
+            update.message.reply_text(text=name + " is not valid")
+            return
+        metadata['action'] = 'question'
         metadata['puzzle_buffer'][from_user].append([])
         metadata['answer_buffer'][from_user].append([])
         if len(metadata['puzzle_buffer'][from_user]) > 1:
@@ -164,12 +169,18 @@ class QAuthor:
             update.message.reply_text(
                 text=answs + "\n" + guess + "\n" + hint)
 
+    def __check_name(self, name):
+        return True
+
     def __set_name(self, update, context):
         metadata = self.__get_chat_meta(update, context)
         if metadata['action'] == 'question' or metadata['action'] == 'answer':
             name = '_'.join(context.args)
-            metadata['name'] = name
-            update.message.reply_text(text="New name set")
+            if self.__check_name(name):
+                metadata['name'] = name
+                update.message.reply_text(text="New name: "+name)
+            else:
+                update.message.reply_text(text=name+" is not valid")
         else:
             update.message.reply_text(
                 text="Question already saved. Please specify a name before calling /end next time")

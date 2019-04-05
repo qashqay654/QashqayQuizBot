@@ -28,10 +28,9 @@ class QGameConfig:
 
 
 class QGame:
-
+    __name__ = "QGame"
     def __init__(self, config_path: str):
         self.config = QGameConfig(config_path)
-        print('started')
         puzzles_db = PicklePersistence(filename=self.config.user_db_path)
         self.updater = Updater(self.config.token, use_context=True, persistence=puzzles_db)
         self.init_dispatcher(self.updater.dispatcher)
