@@ -17,7 +17,6 @@ class BotThread(threading.Thread):
 
         while not self.shutdown_flag.is_set():
             self.bot.start_polling(True)
-
         self.bot.stop_polling()
         print(self.bot.__name__ + ' stopped')
 
@@ -50,10 +49,15 @@ def main():
     except ServiceExit:
         auth_tread.shutdown_flag.set()
         game_tread.shutdown_flag.set()
-        # Wait for the threads to close...
+
         auth_tread.join()
         game_tread.join()
 
 
 if __name__ == "__main__":
     main()
+    #game = QGame("./configs/qgame_config.yaml")
+    #game.start_polling(False)
+
+    #auth = QAuthor("./configs/qauthor_config.yaml")
+    #auth.start_polling((False))

@@ -19,7 +19,7 @@ class QAuthorConfig:
 
             self.working_path = config['working_path']
             self.logger_path = config['logger_path']
-            self.token = config['token']
+            self.token = config['token'] # TODO: add encryption
             self.save_media = bool(int(config['save_media']))
             self.user_db_path = config['user_db_path']
 
