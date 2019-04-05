@@ -8,6 +8,7 @@ from QReadWrite import QReadWrite
 
 class QAuthorConfig:
     working_path = ""
+    default_game = ""
     logger_path = ""
     token = ""
     save_media = True
@@ -18,6 +19,7 @@ class QAuthorConfig:
             config = yaml.load(handle, Loader=yaml.BaseLoader)
 
             self.working_path = config['working_path']
+            self.default_game = config['default_game']
             self.logger_path = config['logger_path']
             self.token = config['token'] # TODO: add encryption
             self.save_media = bool(int(config['save_media']))
@@ -52,6 +54,20 @@ class QAuthor:
             metadata = context.user_data
         else:
             metadata = context.chat_data
+
+        if "puzzle_buffer" not in metadata:
+            metadata["puzzle_buffer"] = defaultdict(list)
+        if "answer_buffer" not in metadata:
+            metadata["answer_buffer"] = defaultdict(list)
+        if "action" not in metadata:
+            metadata["action"] = None
+        if "question_num" not in metadata:
+            metadata["question_num"] = defaultdict(int)
+        if "puzzle_folder" not in metadata:
+            metadata["puzzle_folder"] = self.config.default_game
+        if "name" not in metadata:
+            metadata["name"] = ""
+
         return metadata
 
     def __start(self, update, context):
@@ -61,7 +77,7 @@ class QAuthor:
             metadata['answer_buffer'] = defaultdict(list)
             metadata['action'] = None
             metadata['question_num'] = defaultdict(int)
-            metadata["puzzle_folder"] = "random_flood"
+            metadata["puzzle_folder"] = self.config.default_game
             metadata["name"] = ""
             self.logger.info('New user added %s', update.message.from_user)
         update.message.reply_text(text="""Hello! Welcome to the Puzzle Writer!

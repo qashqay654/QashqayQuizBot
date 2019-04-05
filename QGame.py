@@ -57,6 +57,17 @@ class QGame:
             metadata = context.user_data
         else:
             metadata = context.chat_data
+
+        if metadata:
+            if 'game_type' not in metadata.keys():
+                metadata['game_type'] = self.config.default_game
+            if 'quiz' not in metadata.keys():
+                metadata['quiz'] = {}
+                metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir, metadata['game_type'])
+            if 'no_spoiler' not in metadata.keys():
+                metadata['no_spoiler'] = self.config.no_spoilers_default
+            if 'message_stack' not in metadata.keys():
+                metadata['message_stack'] = []
         return metadata
 
     def __check_meta(self, metadata, update):
@@ -90,7 +101,9 @@ class QGame:
         QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
     def __question(self, update, context):
-        metadata = self.__get_chat_meta(update, context)
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        if not metadata:
+            return
         chat_id = update.message.chat_id
         metadata['message_stack'].append(update.message)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
@@ -98,7 +111,9 @@ class QGame:
         QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
     def __hint(self, update, context):
-        metadata = self.__get_chat_meta(update, context)
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        if not metadata:
+            return
         chat_id = update.message.chat_id
 
         help_reply = metadata['quiz'][metadata['game_type']].get_hint()
@@ -106,7 +121,9 @@ class QGame:
         metadata['message_stack'].append(context.bot.sendMessage(chat_id=chat_id, text=help_reply))
 
     def __answer(self, update, context):
-        metadata = self.__get_chat_meta(update, context)
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        if not metadata:
+            return
 
         chat_id = update.message.chat_id
         metadata['message_stack'].append(update.message)
@@ -141,7 +158,9 @@ class QGame:
         self.logger.warning('Update "%s" caused error "%s"', update, context.error)
 
     def __reset(self, update, context):
-        metadata = self.__get_chat_meta(update, context)
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        if not metadata:
+            return
         update.message.reply_text(self.__reset_text(),
                                   reply_markup=self.__reset_markup())
 
@@ -156,8 +175,10 @@ class QGame:
 
     def __reset_button(self, update, context):
         query = update.callback_query
-        metadata = self.__get_chat_meta(query, context)
+        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
         chat_id = query.message.chat_id
+        if not metadata:
+            return
         button = bool(int(query.data.split('-')[-1]))
         if bool(button):
             query.message.delete()
@@ -168,13 +189,17 @@ class QGame:
             query.message.delete()
 
     def __settings(self, update, context):
-        metadata = self.__get_chat_meta(update, context)
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        if not metadata:
+            return
         update.message.reply_text(self.__settings_main_text(),
                                   reply_markup=self.__settings_main_markup())
 
     def __settings_main(self, update, context):
         query = update.callback_query
-        metadata = self.__get_chat_meta(query, context)
+        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
+        if not metadata:
+            return
 
         query.edit_message_text(text=self.__settings_main_text(),
                                 reply_markup=self.__settings_main_markup())
@@ -199,7 +224,9 @@ class QGame:
 
     def __settings_spoiler(self, update, context):
         query = update.callback_query
-        metadata = self.__get_chat_meta(query, context)
+        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
+        if not metadata:
+            return
         query.edit_message_text(text=self.__settings_spoiler_text(metadata['no_spoiler']),
                                 reply_markup=self.__settings_spoiler_markup())
 
@@ -216,7 +243,9 @@ class QGame:
 
     def __settings_spoiler_button(self, update, context):
         query = update.callback_query
-        metadata = self.__get_chat_meta(query, context)
+        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
+        if not metadata:
+            return
         button = bool(int(query.data.split('-')[-1]))
         metadata['no_spoiler'] = button
         query.answer(text="Successfully set no spoiler mode" if button else "Successfully unset no spoiler mode")
@@ -229,7 +258,9 @@ class QGame:
 
     def __settings_game(self, update, context):
         query = update.callback_query
-        metadata = self.__get_chat_meta(query, context)
+        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
+        if not metadata:
+            return
         reply_markup = QReadWrite.parse_game_folders_markup(self.config.working_dir)
         query.edit_message_text(text=self.__settings_game_text(metadata['game_type']),
                                 reply_markup=reply_markup)
@@ -239,8 +270,10 @@ class QGame:
 
     def __settings_game_button(self, update, context):
         query = update.callback_query
-        metadata = self.__get_chat_meta(query, context)
+        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
         chat_id = query.message.chat_id
+        if not metadata:
+            return
         button = query.data.split('-')[-1]
         if button in metadata['quiz'].keys():
             metadata['game_type'] = button
