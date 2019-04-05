@@ -140,10 +140,10 @@ class QGame:
         if correctness == AnswerCorrectness.CORRECT:
             if metadata['no_spoiler']:
                 for msg in metadata['message_stack']:
-                    #try:
-                    context.bot.deleteMessage(msg.chat_id, msg.message_id)
-                    #except:
-                    #    self.logger.warning('No message "%s"', msg)
+                    try:
+                        context.bot.deleteMessage(msg.chat_id, msg.message_id)
+                    except:
+                        self.logger.warning('No message "%s"', msg)
             metadata['message_stack'].clear()
 
             metadata['quiz'][metadata['game_type']].next()
