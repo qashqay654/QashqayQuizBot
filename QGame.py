@@ -90,24 +90,25 @@ class QGame:
                                                                   )
             metadata['no_spoiler'] = self.config.no_spoilers_default if update.effective_message.chat.type != 'private' else False
             metadata['message_stack'] = []
-
             reply_text = ("	Привет! Добро пожаловать в игру!\n"
                           "\n"
-                          "Ниже появится первая загадка. Если у тебя есть идея ответа, то введи её после команды /answer в качестве аргумента, например: /answer Пушкин. Если ответ правильный, то ты сразу перейдешь к следующему уровню. Также не исключено, что автор вопроса добавил подсказку. Чтобы увидеть её вбей команду /hint. Если не получается найти ответ (либо ты уверен, что написал правильно, а глупый бот тебя не понимает), то введи /getanswer, и если режим игры позволяет просматривать ответы, то можешь проверить свои догадки. Также некоторые режими игры позволяют менять уровень, не решив прерыдущий. Для этого введи /setlevel и выбери нужный.\n"
-                          "\n"
-                          "В боте предусмотрено несколько видов и источников загадок. Полный список можно найти, введя /settings и выбрав опцию Игры. \n"
-                          "\n"
-                          "Для игры в групповых чатах предусмотрен режим No spoilers. Если включить его в меню /settings, то бот будет удалять все сообщения, относящиеся к предыдущему вопросу, чтобы остальные участники группы не видели ответов и могли решить загадку самостоятельно.\n"
-                          "\n"
-                          "Если хочешь начать игру сначала, то введи /reset, но учти, что тогда потеряются все сохранения.\n"
+                          '/answer [ans] - Дать ответ на вопрос (/+tab ответ)\n'
+                          '/hint - Вызвать подсказку\n'
+                          '/repeat - Повторить последний вопрос\n'
+                          '/getanswer - Получить ответ\n'
+                          '/setlevel - Выбрать уровень\n'
+                          '/settings - Настройки игры (режим и no spoilers)\n'
+                          '/start - Начать игру\n'
+                          '/help - Вызвать подробную подсказку\n'
+                          '/credits - Авторам\n'
+                          '/reset - Сброс прогресса игры \n'
                           "\n"
                           "	Удачи!\n")
 
             metadata['message_stack'].append(
                 context.bot.sendMessage(chat_id=chat_id, text=reply_text))
+            self.__set_game(update, context)
             self.logger.info('New user added %s', update.effective_message.from_user)
-        question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
     def __question(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -215,6 +216,16 @@ class QGame:
         else:
             update.effective_message.delete()
 
+    def __set_game(self, update, context):
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        chat_id = update.effective_message.chat_id
+        if not metadata:
+            return
+        reply_markup = QReadWrite.parse_game_folders_markup(self.config.working_dir)
+        context.bot.sendMessage(text=self.__settings_game_text(metadata['game_type'], False),
+                                chat_id=chat_id,
+                                reply_markup=reply_markup)
+
     def __settings(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
@@ -295,8 +306,11 @@ class QGame:
         query.edit_message_text(text=self.__settings_game_text(metadata['game_type']),
                                 reply_markup=reply_markup)
 
-    def __settings_game_text(self, status):
-        return "Доступные игры " + " (сейчас " + str(status) + ")"
+    def __settings_game_text(self, status, with_current=True):
+        if with_current:
+            return "Доступные игры " + " (сейчас " + str(status) + ")"
+        else:
+            return "Доступные игры"
 
     def __settings_game_button(self, update, context):
         query = update.callback_query
@@ -359,11 +373,14 @@ class QGame:
 
     def __help(self, update, context):
         chat_id = update.effective_message.chat_id
-        context.bot.sendMessage(text=('/start - Начать игру\n'
-                                      '/answer [ans] - Дать ответ на вопрос\n'
-                                      '/repeat - Повторить последний вопрос\n'
-                                      '/settings - Настройки игры (режим и no spoilers)\n'
-                                      '/reset - Сброс прогресса игры \n'), chat_id=chat_id)
+        context.bot.sendMessage(text=("Если у тебя есть идея ответа, то введи её после команды /answer в качестве аргумента, например: /answer Пушкин. Если ответ правильный, то ты сразу перейдешь к следующему уровню. Также не исключено, что автор вопроса добавил подсказку. Чтобы увидеть её вбей команду /hint. Если не получается найти ответ (либо ты уверен, что написал правильно, а глупый бот тебя не понимает), то введи /getanswer, и если режим игры позволяет просматривать ответы, то можешь проверить свои догадки. Также некоторые режими игры позволяют менять уровень, не решив прерыдущий. Для этого введи /setlevel и выбери нужный.\n"
+                          "\n"
+                          "В боте предусмотрено несколько видов и источников загадок. Полный список можно найти, введя /settings и выбрав опцию Игры. \n"
+                          "\n"
+                          "Для игры в групповых чатах предусмотрен режим No spoilers. Если включить его в меню /settings, то бот будет удалять все сообщения, относящиеся к предыдущему вопросу, чтобы остальные участники группы не видели ответов и могли решить загадку самостоятельно.\n"
+                          "\n"
+                          "Если хочешь начать игру сначала, то введи /reset, но учти, что тогда потеряются все сохранения.\n"
+                                      ), chat_id=chat_id)
 
     def __credentials(self, update, context):
         chat_id = update.effective_message.chat_id
