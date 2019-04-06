@@ -53,7 +53,7 @@ class QGame:
         self.updater.stop()
 
     def __get_chat_meta(self, update, context):
-        if update.message.chat.type == 'private':
+        if update.effective_message.chat.type == 'private':
             metadata = context.user_data
         else:
             metadata = context.chat_data
@@ -66,7 +66,7 @@ class QGame:
                 metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir,
                                                                       metadata['game_type'],
                                                                       context.bot,
-                                                                      update.message.chat_id)
+                                                                      update.effective_message.chat_id)
             if 'no_spoiler' not in metadata.keys():
                 metadata['no_spoiler'] = self.config.no_spoilers_default
             if 'message_stack' not in metadata.keys():
@@ -75,12 +75,12 @@ class QGame:
 
     def __check_meta(self, metadata, update):
         if not metadata:
-            update.message.reply_text("Видимо что-то сломалось. Введите /start, чтобы начать")
+            update.effective_message.reply_text("Видимо что-то сломалось. Введите /start, чтобы начать")
         return metadata
 
     def __start(self, update, context):
         metadata = self.__get_chat_meta(update, context)
-        chat_id = update.message.chat_id
+        chat_id = update.effective_message.chat_id
 
         if not metadata:
             metadata['game_type'] = self.config.default_game
@@ -88,7 +88,7 @@ class QGame:
             metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir,
                                                                   metadata['game_type']
                                                                   )
-            metadata['no_spoiler'] = self.config.no_spoilers_default if update.message.chat.type != 'private' else False
+            metadata['no_spoiler'] = self.config.no_spoilers_default if update.effective_message.chat.type != 'private' else False
             metadata['message_stack'] = []
 
             reply_text = ("	Привет! Добро пожаловать в игру!\n"
@@ -105,7 +105,7 @@ class QGame:
 
             metadata['message_stack'].append(
                 context.bot.sendMessage(chat_id=chat_id, text=reply_text))
-            self.logger.info('New user added %s', update.message.from_user)
+            self.logger.info('New user added %s', update.effective_message.from_user)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
         metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
@@ -113,8 +113,8 @@ class QGame:
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
-        chat_id = update.message.chat_id
-        metadata['message_stack'].append(update.message)
+        chat_id = update.effective_message.chat_id
+        metadata['message_stack'].append(update.effective_message)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
 
         metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
@@ -123,10 +123,10 @@ class QGame:
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
-        chat_id = update.message.chat_id
+        chat_id = update.effective_message.chat_id
 
         help_reply = metadata['quiz'][metadata['game_type']].get_hint()
-        metadata['message_stack'].append(update.message)
+        metadata['message_stack'].append(update.effective_message)
         metadata['message_stack'].append(context.bot.sendMessage(chat_id=chat_id, text=help_reply))
 
     def __answer(self, update, context):
@@ -134,17 +134,17 @@ class QGame:
         if not metadata:
             return
 
-        chat_id = update.message.chat_id
-        metadata['message_stack'].append(update.message)
+        chat_id = update.effective_message.chat_id
+        metadata['message_stack'].append(update.effective_message)
 
         answer = ' '.join(context.args).lower()
         if not answer:
             metadata['message_stack'].append(
-                update.message.reply_text(text="Укажи ответ аргументом после команды /answer, например:\n /answer 1984"))
+                update.effective_message.reply_text(text="Укажи ответ аргументом после команды /answer, например:\n /answer 1984"))
             return
 
         self.logger.info('User %s answered %s in game %s on question %s',
-                         update.message.from_user,
+                         update.effective_message.from_user,
                          answer,
                          metadata['game_type'],
                          metadata['quiz'][metadata['game_type']].last_question_num
@@ -152,7 +152,7 @@ class QGame:
         correctness = metadata['quiz'][metadata['game_type']].check_answer(answer)
         if correctness == AnswerCorrectness.CORRECT:
             self.logger.info('User %s solved puzzle %s from %s',
-                             update.message.from_user, metadata['quiz'][metadata['game_type']].last_question_num, metadata['game_type'])
+                             update.effective_message.from_user, metadata['quiz'][metadata['game_type']].last_question_num, metadata['game_type'])
             if metadata['no_spoiler']:
                 for msg in metadata['message_stack']:
                     try:
@@ -173,7 +173,7 @@ class QGame:
 
     def __get_answer(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        chat_id = update.message.chat_id
+        chat_id = update.effective_message.chat_id
         context.bot.sendMessage(text=metadata['quiz'][metadata['game_type']].get_answer(), chat_id=chat_id)
 
 
@@ -185,7 +185,7 @@ class QGame:
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
-        update.message.reply_text(self.__reset_text(),
+        update.effective_message.reply_text(self.__reset_text(),
                                   reply_markup=self.__reset_markup())
 
     def __reset_text(self):
@@ -199,32 +199,32 @@ class QGame:
 
     def __reset_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
-        chat_id = query.message.chat_id
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        chat_id = update.effective_message.chat_id
         if not metadata:
             return
         button = bool(int(query.data.split('-')[-1]))
         if bool(button):
-            query.message.delete()
+            update.effective_message.delete()
             metadata['quiz'][metadata['game_type']].reset()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
             metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
             self.logger.info('User %s reset %s',
-                             query.message.from_user,
+                             update.effective_message.from_user,
                              metadata['game_type'])
         else:
-            query.message.delete()
+            update.effective_message.delete()
 
     def __settings(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
-        update.message.reply_text(self.__settings_main_text(),
+        update.effective_message.reply_text(self.__settings_main_text(),
                                   reply_markup=self.__settings_main_markup())
 
     def __settings_main(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
 
@@ -245,13 +245,13 @@ class QGame:
     def __settings_done(self, update, context):
         query = update.callback_query
         query.answer(text='Done')
-        query.message.delete()
+        update.effective_message.delete()
 
     # Dissapearing mode settings
 
     def __settings_spoiler(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
         query.edit_message_text(text=self.__settings_spoiler_text(metadata['no_spoiler']),
@@ -270,7 +270,7 @@ class QGame:
 
     def __settings_spoiler_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
         button = bool(int(query.data.split('-')[-1]))
@@ -281,14 +281,14 @@ class QGame:
             reply_markup=self.__settings_main_markup()
         )
         self.logger.info('User %s set spoiler mode to %s',
-                         query.message.from_user,
+                         update.effective_message.from_user,
                          button)
 
     # Game mode settings
 
     def __settings_game(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
         reply_markup = QReadWrite.parse_game_folders_markup(self.config.working_dir)
@@ -300,8 +300,8 @@ class QGame:
 
     def __settings_game_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
-        chat_id = query.message.chat_id
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        chat_id = update.effective_message.chat_id
         if not metadata:
             return
         button = query.data.split('-')[-1]
@@ -312,15 +312,15 @@ class QGame:
             metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir,
                                                                   metadata['game_type'],
                                                                   context.bot,
-                                                                  query.message.chat_id)
+                                                                  update.effective_message.chat_id)
         self.logger.info('User %s set new game type %s',
-                         query.message.from_user,
+                         update.effective_message.from_user,
                          metadata['game_type'])
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
         metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
         query.answer(text='Теперь играем в ' + button)
-        query.message.delete()
+        update.effective_message.delete()
 
     def __levels_markup(self, game):
         levels = game.get_all_levels()
@@ -337,28 +337,28 @@ class QGame:
 
     def __set_level(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        chat_id = update.message.chat_id
+        chat_id = update.effective_message.chat_id
         levels_markup = self.__levels_markup(metadata['quiz'][metadata['game_type']])
         if levels_markup:
-            update.message.reply_text('Выберите уровень',
+            update.effective_message.reply_text('Выберите уровень',
                                       reply_markup=levels_markup)
         else:
-            update.message.reply_text("Выбор уровня невозможен в этом режиме игры")
+            update.effective_message.reply_text("Выбор уровня невозможен в этом режиме игры")
 
     def __levels_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
-        chat_id = query.message.chat_id
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        chat_id = update.effective_message.chat_id
         if not metadata:
             return
         button = int(query.data.split('-')[-1])
         metadata['quiz'][metadata['game_type']].set_level(button)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
         metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
-        query.message.delete()
+        update.effective_message.delete()
 
     def __help(self, update, context):
-        chat_id = update.message.chat_id
+        chat_id = update.effective_message.chat_id
         context.bot.sendMessage(text=('/start - Начать игру\n'
                                       '/answer [ans] - Дать ответ на вопрос\n'
                                       '/repeat - Повторить последний вопрос\n'
@@ -366,9 +366,9 @@ class QGame:
                                       '/reset - Сброс прогресса игры \n'), chat_id=chat_id)
 
     def __credentials(self, update, context):
-        chat_id = update.message.chat_id
+        chat_id = update.effective_message.chat_id
         context.bot.sendMessage(text="""
-Данный бот создавался только с развлекательными целями и не несёт никакой коммерческой выгоды. Некоторые из игр в этом боте полностью скопированы с других ресурсов с загадками: Манул загадко (http://manulapuzzle.ru), Project Euler (https://projecteuler.net), Night Run. Создатели проекта ни коим образом не претендуют на авторство этих вопросов, а являются всего лишь большими фанатами этих ресурсов и хотят распространить их среди своих друзей и знакомых. Если ты являешься создателем или причастным к созданию этих задач и по каким-то причинам не доволен наличием твоих задач или упоминания ресурса в данном боте, то напиши пожалуйста на почту qashqay.sol@yandex.ru.
+Данный бот создавался только с развлекательными целями и не несёт никакой коммерческой выгоды. Некоторые из игр в этом боте полностью скопированы с других ресурсов с загадками: Манул загадко (http://manulapuzzle.ru), Project Euler (https://projecteuler.net), Night Run. Создатели проекта ни коим образом не претендуют на авторство этих вопросов, а являются всего лишь большими фанатами этих ресурсов и хотят распространить их среди своих друзей и знакомых. Если ты являешься создателем или причастным к созданию этих задач и по каким-то причинам не доволен наличием твоих задач или упоминания ресурса в данном боте, то напиши пожалуйста на почту qashqay.sol@yandex.ru. Исходный код бота находится в открытом доступе https://github.com/qashqay654/QashqayQuizBot
 """, chat_id=chat_id)
 
 

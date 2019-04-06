@@ -83,7 +83,10 @@ class QReadWrite:
 
     @staticmethod
     def save_to_file(message, answer, from_user, user_meta, puzzle_dir, bot=None, save_media=True):
-        user_dir = os.path.join(puzzle_dir, user_meta['puzzle_folder'], from_user.username)
+        if from_user.username:
+            user_dir = os.path.join(puzzle_dir, user_meta['puzzle_folder'], from_user.username)
+        else:
+            user_dir = os.path.join(puzzle_dir, user_meta['puzzle_folder'], str(from_user.id))
         if not os.path.exists(user_dir):
             os.makedirs(user_dir)
         puzzle_dir_ = os.path.join(user_dir, str(user_meta['question_num'][user_meta['puzzle_folder']]))

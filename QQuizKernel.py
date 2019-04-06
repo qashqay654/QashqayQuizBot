@@ -1,6 +1,7 @@
 import os
 import yaml
 import numpy as np
+from natsort import natsorted
 
 from QReadWrite import QReadWrite
 from QTypes import AnswerCorrectness, FileType
@@ -23,7 +24,7 @@ class QQuizKernel:
         self.working_dir = os.path.join(working_dir, game_mode, 'master')
         self.config = QQuizKernelConfig(os.path.join(working_dir, game_mode))
 
-        self.levels = sorted([dr for dr in os.listdir(self.working_dir) \
+        self.levels = natsorted([dr for dr in os.listdir(self.working_dir) \
                               if os.path.isdir(os.path.join(self.working_dir, dr))])
         self._last_question_num = 0
         self.puzzle_dir = os.path.join(self.working_dir, self.levels[self._last_question_num])
@@ -37,7 +38,7 @@ class QQuizKernel:
             bot.sendMessage(text=self.config.intro_message, chat_id=chat_id)
 
     def __get_question(self):
-        self.levels = sorted([dr for dr in os.listdir(self.working_dir) \
+        self.levels = natsorted([dr for dr in os.listdir(self.working_dir) \
                               if os.path.isdir(os.path.join(self.working_dir, dr))])
         self.puzzle_dir = os.path.join(self.working_dir, self.levels[self._last_question_num])
         self.question = QReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'question.pickle'))
@@ -93,6 +94,8 @@ class QQuizKernel:
 
     def get_all_levels(self):
         if self.config.allow_to_change_level:
+            self.levels = natsorted([dr for dr in os.listdir(self.working_dir) \
+                                     if os.path.isdir(os.path.join(self.working_dir, dr))])
             return [level.split('-@') for level in self.levels]
         else:
             return None
