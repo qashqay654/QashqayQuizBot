@@ -45,9 +45,10 @@ class QReadWrite:
 
     @staticmethod
     def send(buffer, bot, chat_id, puzzle_dir="", preview=True):
+        message_stack = []
         if '-@' in puzzle_dir:
             name = puzzle_dir.split('-@')[-1]
-            bot.sendMessage(chat_id, text="Puzzle: " + name)
+            message_stack.append(bot.sendMessage(chat_id, text="Puzzle: " + " ".join(name.split('_'))))
         for message in buffer:
             message_type = message[0]
             first_field = message[1]
@@ -55,29 +56,30 @@ class QReadWrite:
             if message[4] and not preview:
                 first_field = open(os.path.join(puzzle_dir, first_field), 'rb')
             if message_type == FileType.Text:
-                bot.sendMessage(chat_id, text=first_field)
+                message_stack.append(bot.sendMessage(chat_id, text=first_field))
             elif message_type == FileType.Location:
-                bot.sendLocation(
-                    chat_id, longitude=first_field, latitude=second_field)
+                message_stack.append(bot.sendLocation(
+                    chat_id, longitude=first_field, latitude=second_field))
             elif message_type == FileType.Contact:
-                bot.sendContact(
-                    chat_id, phone_number=first_field, first_name=second_field)
+                message_stack.append(bot.sendContact(
+                    chat_id, phone_number=first_field, first_name=second_field))
             elif message_type == FileType.Photo:
-                bot.sendPhoto(chat_id, first_field, caption=second_field)
+                message_stack.append(bot.sendPhoto(chat_id, first_field, caption=second_field))
             elif message_type == FileType.Sticker:
-                bot.sendSticker(chat_id, first_field)
+                message_stack.append(bot.sendSticker(chat_id, first_field))
             elif message_type == FileType.Audio:
-                bot.sendAudio(chat_id, first_field, caption=second_field)
+                message_stack.append(bot.sendAudio(chat_id, first_field, caption=second_field))
             elif message_type == FileType.Voice:
-                bot.sendVoice(chat_id, first_field, caption=second_field)
+                message_stack.append(bot.sendVoice(chat_id, first_field, caption=second_field))
             elif message_type == FileType.Video:
-                bot.sendVideo(chat_id, first_field, caption=second_field)
+                message_stack.append(bot.sendVideo(chat_id, first_field, caption=second_field))
             elif message_type == FileType.VideoNote:
-                bot.sendVideoNote(chat_id, first_field)
+                message_stack.append(bot.sendVideoNote(chat_id, first_field))
             elif message_type == FileType.Document:
-                bot.sendDocument(chat_id, first_field, caption=second_field)
+                message_stack.append(bot.sendDocument(chat_id, first_field, caption=second_field))
             elif message_type == FileType.Animation:
-                bot.sendAnimation(chat_id, first_field, caption=second_field)
+                message_stack.append(bot.sendAnimation(chat_id, first_field, caption=second_field))
+        return message_stack
 
     @staticmethod
     def save_to_file(message, answer, from_user, user_meta, puzzle_dir, bot=None, save_media=True):
@@ -123,6 +125,5 @@ class QReadWrite:
         with open(file_path, 'rb') as handle:
             return pickle.load(handle)
 
-# TODO: add folders parser
 
 

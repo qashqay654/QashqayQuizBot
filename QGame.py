@@ -42,7 +42,7 @@ class QGame:
                             filename=self.config.logger_path,
                             filemode='a'
                             )
-        self.logger = logging.getLogger(self.__name__)
+        self.logger = logging.getLogger(__name__)
 
     def start_polling(self, demon=False):
         self.updater.start_polling()
@@ -97,8 +97,9 @@ class QGame:
 
             metadata['message_stack'].append(
                 context.bot.sendMessage(chat_id=chat_id, text=reply_text))
+            self.logger.info('New user added %s', update.message.from_user)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-        QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
     def __question(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -108,7 +109,7 @@ class QGame:
         metadata['message_stack'].append(update.message)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
 
-        QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
     def __hint(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -135,6 +136,8 @@ class QGame:
             return
         correctness = metadata['quiz'][metadata['game_type']].check_answer(answer)
         if correctness == AnswerCorrectness.CORRECT:
+            self.logger.info('User %s solved puzzle %s from %s',
+                             update.message.from_user, metadata['quiz'][metadata['game_type']].last_question_num, metadata['game_type'])
             if metadata['no_spoiler']:
                 for msg in metadata['message_stack']:
                     try:
@@ -145,7 +148,7 @@ class QGame:
 
             metadata['quiz'][metadata['game_type']].next()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
         elif type(correctness) == str:
             metadata['message_stack'].append(
@@ -185,6 +188,9 @@ class QGame:
             metadata['quiz'][metadata['game_type']].reset()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
             QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+            self.logger.info('User %s reset %s',
+                             query.message.from_user,
+                             metadata['game_type'])
         else:
             query.message.delete()
 
@@ -253,6 +259,9 @@ class QGame:
             text=self.__settings_main_text(),
             reply_markup=self.__settings_main_markup()
         )
+        self.logger.info('User %s set spoiler mode to %s',
+                         query.message.from_user,
+                         button)
 
     # Game mode settings
 
@@ -280,6 +289,9 @@ class QGame:
         else:
             metadata['game_type'] = button
             metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir, metadata['game_type'])
+        self.logger.info('User %s set new game type %s',
+                         query.message.from_user,
+                         metadata['game_type'])
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
         QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 

@@ -186,7 +186,11 @@ class QAuthor:
                 text=answs + "\n" + guess + "\n" + hint)
 
     def __check_name(self, name):
-        return True
+        restricted_chars = set('< >|\:()&;.,-?*')
+        if any((c in restricted_chars) for c in name):
+            return False
+        else:
+            return True
 
     def __set_name(self, update, context):
         metadata = self.__get_chat_meta(update, context)

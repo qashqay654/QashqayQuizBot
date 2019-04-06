@@ -1,3 +1,5 @@
+#!/home/sologub10/anaconda3/bin/python
+
 import threading
 import signal
 import time
@@ -34,30 +36,28 @@ def main():
     signal.signal(signal.SIGTERM, service_shutdown)
     signal.signal(signal.SIGINT, service_shutdown)
     try:
-        auth = QAuthor("./configs/qauthor_config.yaml")
-        auth_tread = BotThread(auth)  # threading.Thread(target=auth.start_polling, args=[True])
-
         game = QGame("./configs/qgame_config.yaml")
-        game_tread = BotThread(game)  # threading.Thread(target=game.start_polling, args=[True])
+        game_tread = BotThread(game)
 
-        auth_tread.start()
+        auth = QAuthor("./configs/qauthor_config.yaml")
+        auth_tread = BotThread(auth)
+
         game_tread.start()
+        auth_tread.start()
+
 
         while True:
             time.sleep(0.5)
 
     except ServiceExit:
-        auth_tread.shutdown_flag.set()
         game_tread.shutdown_flag.set()
+        auth_tread.shutdown_flag.set()
 
-        auth_tread.join()
         game_tread.join()
+        auth_tread.join()
 
 
 if __name__ == "__main__":
     main()
-    #game = QGame("./configs/qgame_config.yaml")
-    #game.start_polling(False)
 
-    #auth = QAuthor("./configs/qauthor_config.yaml")
-    #auth.start_polling((False))
+# TODO: разобраться с логгером

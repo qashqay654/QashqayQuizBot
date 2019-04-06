@@ -33,7 +33,8 @@ class QQuizKernel:
         self.__get_question()
 
     def __get_question(self):
-
+        self.levels = sorted([dr for dr in os.listdir(self.working_dir) \
+                              if os.path.isdir(os.path.join(self.working_dir, dr))])
         self.puzzle_dir = os.path.join(self.working_dir, self.levels[self._last_question_num])
         self.question = QReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'question.pickle'))
         pre_answer = QReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'answer.pickle'))
@@ -43,11 +44,11 @@ class QQuizKernel:
         for answ in pre_answer:
             if answ.startswith('~') and len(answ[1:].split('~')) == 2:
                 temp = answ[1:].split('~')
-                self.guess.append([temp[0].strip(), temp[1].strip()])
+                self.guess.append([temp[0].strip().lower(), temp[1].strip()])
             elif answ.startswith("<") and answ.endswith(">"):
-                self.hint.append(answ[1:-1])
+                self.hint.append(answ[1:-1].lower().strip())
             else:
-                self.answer.append(answ)
+                self.answer.append(answ.lower().strip())
         if not len(self.answer):
             self.answer.append("")
         if not len(self.hint):
@@ -66,10 +67,10 @@ class QQuizKernel:
             return "No hint for this puzzle"
 
     def check_answer(self, answer):
-        if answer in self.answer:
+        if answer.lower() in self.answer:
             return AnswerCorrectness.CORRECT
         for guess in self.guess:
-            if answer == guess[0]:
+            if answer.lower() == guess[0]:
                 return guess[1]
         else:
             return 'Wrong'
@@ -91,3 +92,8 @@ class QQuizKernel:
 
     def reset(self):
         self._last_question_num = 0
+
+
+# TODO: add level choose to game.
+# TODO: get answer
+# TODO: перевести на русский
