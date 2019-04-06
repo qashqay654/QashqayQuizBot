@@ -172,8 +172,8 @@ class QAuthor:
             hint = "Hint: "
             sep_h = ''
             for answ in metadata['answer_buffer'][from_user][-1]:
-                if answ.startswith('~') and len(answ[1:].split('~')) == 2:
-                    temp = answ[1:].split('~')
+                if answ.startswith('/') and len(answ[1:].split('/')) == 2:
+                    temp = answ[1:].split('/')
                     guess += sep_g + temp[0] + ' "' + temp[1] + '"'
                     sep_g = ', '
                 elif answ.startswith("<") and answ.endswith(">"):
