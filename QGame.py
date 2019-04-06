@@ -63,7 +63,10 @@ class QGame:
                 metadata['game_type'] = self.config.default_game
             if 'quiz' not in metadata.keys():
                 metadata['quiz'] = {}
-                metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir, metadata['game_type'])
+                metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir,
+                                                                      metadata['game_type'],
+                                                                      context.bot,
+                                                                      update.message.chat_id)
             if 'no_spoiler' not in metadata.keys():
                 metadata['no_spoiler'] = self.config.no_spoilers_default
             if 'message_stack' not in metadata.keys():
@@ -72,7 +75,7 @@ class QGame:
 
     def __check_meta(self, metadata, update):
         if not metadata:
-            update.message.reply_text("Please write '/start' first")
+            update.message.reply_text("Видимо что-то сломалось. Введите /start, чтобы начать")
         return metadata
 
     def __start(self, update, context):
@@ -82,18 +85,23 @@ class QGame:
         if not metadata:
             metadata['game_type'] = self.config.default_game
             metadata['quiz'] = defaultdict(QQuizKernel)
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir, metadata['game_type'])
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir,
+                                                                  metadata['game_type']
+                                                                  )
             metadata['no_spoiler'] = self.config.no_spoilers_default if update.message.chat.type != 'private' else False
             metadata['message_stack'] = []
 
-            reply_text = ('Hi! Welcome to the game!\n'
-                          'Seems that you are newbie. You will receive first question soon, try to be creative in '
-                          'answering)\n '
-                          'If you know the answer write /answer <your guess>.\n'
-                          'If you need a hint try to write /hint, maybe kernell will give you some idea.\n'
-                          '/settings\n'
-                          '/reset\n'
-                          '/repeat\n')
+            reply_text = ("	Привет! Добро пожаловать в игру!\n"
+                          "\n"
+                          "Ниже появится первая загадка. Если у тебя есть идея ответа, то введи её после команды /answer в качестве аргумента, например: /answer Пушкин. Если ответ правильный, то ты сразу перейдешь к следующему уровню. Также не исключено, что автор вопроса добавил подсказку. Чтобы увидеть её вбей команду /hint. Если не получается найти ответ (либо ты уверен, что написал правильно, а глупый бот тебя не понимает), то введи /getanswer, и если режим игры позволяет просматривать ответы, то можешь проверить свои догадки. Также некоторые режими игры позволяют менять уровень, не решив прерыдущий. Для этого введи /setlevel и выбери нужный.\n"
+                          "\n"
+                          "В боте предусмотрено несколько видов и источников загадок. Полный список можно найти, введя /settings и выбрав опцию Игры. \n"
+                          "\n"
+                          "Для игры в групповых чатах предусмотрен режим No spoilers. Если включить его в меню /settings, то бот будет удалять все сообщения, относящиеся к предыдущему вопросу, чтобы остальные участники группы не видели ответов и могли решить загадку самостоятельно.\n"
+                          "\n"
+                          "Если хочешь начать игру сначала, то введи /reset, но учти, что тогда потеряются все сохранения.\n"
+                          "\n"
+                          "	Удачи!\n")
 
             metadata['message_stack'].append(
                 context.bot.sendMessage(chat_id=chat_id, text=reply_text))
@@ -132,8 +140,15 @@ class QGame:
         answer = ' '.join(context.args).lower()
         if not answer:
             metadata['message_stack'].append(
-                update.message.reply_text(text="Please specify answer as an argument after command:\n /answer 1984"))
+                update.message.reply_text(text="Укажи ответ аргументом после команды /answer, например:\n /answer 1984"))
             return
+
+        self.logger.info('User %s answered %s in game %s on question %s',
+                         update.message.from_user,
+                         answer,
+                         metadata['game_type'],
+                         metadata['quiz'][metadata['game_type']].last_question_num
+                         )
         correctness = metadata['quiz'][metadata['game_type']].check_answer(answer)
         if correctness == AnswerCorrectness.CORRECT:
             self.logger.info('User %s solved puzzle %s from %s',
@@ -156,6 +171,12 @@ class QGame:
         else:
             self.logger.warning('Wrong answer type "%s"', correctness)
 
+    def __get_answer(self, update, context):
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        chat_id = update.message.chat_id
+        context.bot.sendMessage(text=metadata['quiz'][metadata['game_type']].get_answer(), chat_id=chat_id)
+
+
     def __error(self, update, context):
         """Log Errors caused by Updates."""
         self.logger.warning('Update "%s" caused error "%s"', update, context.error)
@@ -168,11 +189,11 @@ class QGame:
                                   reply_markup=self.__reset_markup())
 
     def __reset_text(self):
-        return "Are you sure? All progress will be lost"
+        return "Точно? Все сохранения в игре удалятся."
 
     def __reset_markup(self):
-        keyboard = [[InlineKeyboardButton("Yes", callback_data='reset-1'),
-                     InlineKeyboardButton("No", callback_data='reset-0')]]
+        keyboard = [[InlineKeyboardButton("Точно", callback_data='reset-1'),
+                     InlineKeyboardButton("Нет", callback_data='reset-0')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
 
@@ -187,7 +208,7 @@ class QGame:
             query.message.delete()
             metadata['quiz'][metadata['game_type']].reset()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
             self.logger.info('User %s reset %s',
                              query.message.from_user,
                              metadata['game_type'])
@@ -211,11 +232,11 @@ class QGame:
                                 reply_markup=self.__settings_main_markup())
 
     def __settings_main_text(self):
-        return 'Settings'
+        return 'Выбери нужную настройку'
 
     def __settings_main_markup(self):
-        keyboard = [[InlineKeyboardButton("Game Mode", callback_data='m3-game_type'),
-                     InlineKeyboardButton("No spoiler", callback_data='m2-diss_mode')],
+        keyboard = [[InlineKeyboardButton("Игры", callback_data='m3-game_type'),
+                     InlineKeyboardButton("No spoilers", callback_data='m2-diss_mode')],
 
                     [InlineKeyboardButton("Done", callback_data='done')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -237,12 +258,12 @@ class QGame:
                                 reply_markup=self.__settings_spoiler_markup())
 
     def __settings_spoiler_text(self, status):
-        return "No spoiler mode will delete all old answers and questions" + " (now " + str(status) + ")"
+        return "При включенном режиме no spoilers будут удаляться все старые вопросы и ответы, но работает он только в групповых чатах " + " (сейчас " + str(status) + ")"
 
     def __settings_spoiler_markup(self):
-        keyboard = [[InlineKeyboardButton("On", callback_data='m2_1-1'),
-                     InlineKeyboardButton("Off", callback_data='m2_1-0')],
-                    [InlineKeyboardButton("Main menu", callback_data='main')]
+        keyboard = [[InlineKeyboardButton("Вкл", callback_data='m2_1-1'),
+                     InlineKeyboardButton("Выкл", callback_data='m2_1-0')],
+                    [InlineKeyboardButton("Главное меню", callback_data='main')]
                     ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
@@ -254,7 +275,7 @@ class QGame:
             return
         button = bool(int(query.data.split('-')[-1]))
         metadata['no_spoiler'] = button
-        query.answer(text="Successfully set no spoiler mode" if button else "Successfully unset no spoiler mode")
+        query.answer(text="Режим no spoilers включен" if button else "Режим no spoilers выключен")
         query.edit_message_text(
             text=self.__settings_main_text(),
             reply_markup=self.__settings_main_markup()
@@ -275,7 +296,7 @@ class QGame:
                                 reply_markup=reply_markup)
 
     def __settings_game_text(self, status):
-        return "What type of the game you want?" + " (now " + str(status) + ")"
+        return "Доступные игры " + " (сейчас " + str(status) + ")"
 
     def __settings_game_button(self, update, context):
         query = update.callback_query
@@ -288,15 +309,69 @@ class QGame:
             metadata['game_type'] = button
         else:
             metadata['game_type'] = button
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir, metadata['game_type'])
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.working_dir,
+                                                                  metadata['game_type'],
+                                                                  context.bot,
+                                                                  query.message.chat_id)
         self.logger.info('User %s set new game type %s',
                          query.message.from_user,
                          metadata['game_type'])
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-        QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
-        query.answer(text='New game mode ' + button)
+        query.answer(text='Теперь играем в ' + button)
         query.message.delete()
+
+    def __levels_markup(self, game):
+        levels = game.get_all_levels()
+        if not levels:
+            return None
+        keyboard = [[]]
+        for i, level in enumerate(levels):
+            if len(keyboard[-1]) == 1:
+                keyboard.append([])
+            num, lev = level[0], " ".join(level[1].split('_'))
+            keyboard[-1].append(InlineKeyboardButton(str(int(num)+1)+'. '+lev, callback_data='game_level-' + str(i)))
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        return reply_markup
+
+    def __set_level(self, update, context):
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        chat_id = update.message.chat_id
+        levels_markup = self.__levels_markup(metadata['quiz'][metadata['game_type']])
+        if levels_markup:
+            update.message.reply_text('Выберите уровень',
+                                      reply_markup=levels_markup)
+        else:
+            update.message.reply_text("Выбор уровня невозможен в этом режиме игры")
+
+    def __levels_button(self, update, context):
+        query = update.callback_query
+        metadata = self.__check_meta(self.__get_chat_meta(query, context), query)
+        chat_id = query.message.chat_id
+        if not metadata:
+            return
+        button = int(query.data.split('-')[-1])
+        metadata['quiz'][metadata['game_type']].set_level(button)
+        question, path = metadata['quiz'][metadata['game_type']].get_new_question()
+        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+        query.message.delete()
+
+    def __help(self, update, context):
+        chat_id = update.message.chat_id
+        context.bot.sendMessage(text=('/start - Начать игру\n'
+                                      '/answer [ans] - Дать ответ на вопрос\n'
+                                      '/repeat - Повторить последний вопрос\n'
+                                      '/settings - Настройки игры (режим и no spoilers)\n'
+                                      '/reset - Сброс прогресса игры \n'), chat_id=chat_id)
+
+    def __credentials(self, update, context):
+        chat_id = update.message.chat_id
+        context.bot.sendMessage(text="""
+Данный бот создавался только с развлекательными целями и не несёт никакой коммерческой выгоды. Некоторые из игр в этом боте полностью скопированы с других ресурсов с загадками: Манул загадко (http://manulapuzzle.ru), Project Euler (https://projecteuler.net), Night Run. Создатели проекта ни коим образом не претендуют на авторство этих вопросов, а являются всего лишь большими фанатами этих ресурсов и хотят распространить их среди своих друзей и знакомых. Если ты являешься создателем или причастным к созданию этих задач и по каким-то причинам не доволен наличием твоих задач или упоминания ресурса в данном боте, то напиши пожалуйста на почту qashqay.sol@yandex.ru.
+""", chat_id=chat_id)
+
+
 
     def init_dispatcher(self, dispatcher):
         dispatcher.add_handler(CommandHandler("start", self.__start,
@@ -307,6 +382,10 @@ class QGame:
                                               pass_args=True, pass_user_data=True, pass_chat_data=True))
         dispatcher.add_handler(CommandHandler("repeat", self.__question,
                                               pass_user_data=True, pass_chat_data=True))
+        dispatcher.add_handler(CommandHandler("getanswer", self.__get_answer,
+                                              pass_user_data=True, pass_chat_data=True))
+        dispatcher.add_handler(CommandHandler("help", self.__help))
+        dispatcher.add_handler(CommandHandler("credits", self.__credentials))
 
         dispatcher.add_handler(CommandHandler("reset", self.__reset,
                                               pass_user_data=True, pass_chat_data=True))
@@ -320,6 +399,10 @@ class QGame:
         dispatcher.add_handler(CallbackQueryHandler(self.__settings_spoiler_button, pattern='^m2_1-'))
         dispatcher.add_handler(CallbackQueryHandler(self.__settings_game, pattern='^m3-'))
         dispatcher.add_handler(CallbackQueryHandler(self.__settings_game_button, pattern='^puzzname'))
+
+        dispatcher.add_handler(CommandHandler("setlevel", self.__set_level,
+                                              pass_user_data=True, pass_chat_data=True))
+        dispatcher.add_handler(CallbackQueryHandler(self.__levels_button, pattern='^game_level-'))
 
         dispatcher.add_error_handler(self.__error)
         # TODO: add random talk

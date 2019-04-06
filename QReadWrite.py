@@ -47,8 +47,8 @@ class QReadWrite:
     def send(buffer, bot, chat_id, puzzle_dir="", preview=True):
         message_stack = []
         if '-@' in puzzle_dir:
-            name = puzzle_dir.split('-@')[-1]
-            message_stack.append(bot.sendMessage(chat_id, text="Puzzle: " + " ".join(name.split('_'))))
+            num, name = puzzle_dir.split('/')[-1].split('-@')
+            message_stack.append(bot.sendMessage(chat_id, text=str(int(num)+1) +". "+ " ".join(name.split('_'))))
         for message in buffer:
             message_type = message[0]
             first_field = message[1]

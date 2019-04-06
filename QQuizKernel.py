@@ -12,11 +12,13 @@ class QQuizKernelConfig:
             config = yaml.load(handle, Loader=yaml.BaseLoader)
             self.allow_to_change_level = bool(int(config['allow_to_change_level']))
             self.random_levels = bool(int(config['random_levels']))
+            self.allow_to_get_answer = bool(int(config['allow_to_get_answer']))
+            self.intro_message = config['intro_message']
 
 
 class QQuizKernel:
 
-    def __init__(self, working_dir: str, game_mode: str):
+    def __init__(self, working_dir: str, game_mode: str, bot=None, chat_id=None):
 
         self.working_dir = os.path.join(working_dir, game_mode, 'master')
         self.config = QQuizKernelConfig(os.path.join(working_dir, game_mode))
@@ -31,6 +33,8 @@ class QQuizKernel:
         self.hint = [""]
         self.guess = [["", ""]]
         self.__get_question()
+        if bot:
+            bot.sendMessage(text=self.config.intro_message, chat_id=chat_id)
 
     def __get_question(self):
         self.levels = sorted([dr for dr in os.listdir(self.working_dir) \
@@ -42,8 +46,8 @@ class QQuizKernel:
         self.hint.clear()
         self.guess.clear()
         for answ in pre_answer:
-            if answ.startswith('~') and len(answ[1:].split('~')) == 2:
-                temp = answ[1:].split('~')
+            if answ.startswith('/') and len(answ[1:].split('/')) == 2:
+                temp = answ[1:].split('/')
                 self.guess.append([temp[0].strip().lower(), temp[1].strip()])
             elif answ.startswith("<") and answ.endswith(">"):
                 self.hint.append(answ[1:-1].lower().strip())
@@ -64,7 +68,7 @@ class QQuizKernel:
         if self.hint[-1]:
             return ",".join(self.hint)
         else:
-            return "No hint for this puzzle"
+            return "Для этой загадки нет подсказок"
 
     def check_answer(self, answer):
         if answer.lower() in self.answer:
@@ -73,7 +77,7 @@ class QQuizKernel:
             if answer.lower() == guess[0]:
                 return guess[1]
         else:
-            return 'Wrong'
+            return "Нет"
 
     @property
     def last_question_num(self):
@@ -87,12 +91,24 @@ class QQuizKernel:
         if self._last_question_num >= len(self.levels):
             self._last_question_num = len(self.levels) - 1
 
-    def choose_level(self, level):
-        self._last_question_num = level
+    def get_all_levels(self):
+        if self.config.allow_to_change_level:
+            return [level.split('-@') for level in self.levels]
+        else:
+            return None
+
+    def set_level(self, level):
+        if self.config.allow_to_change_level:
+            self._last_question_num = level
 
     def reset(self):
         self._last_question_num = 0
 
+    def get_answer(self):
+        if self.config.allow_to_get_answer:
+            return self.answer[0]
+        else:
+            return "В данной игре нельзя посмотреть ответ"
 
 # TODO: add level choose to game.
 # TODO: get answer
