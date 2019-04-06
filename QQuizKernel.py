@@ -47,8 +47,8 @@ class QQuizKernel:
         self.hint.clear()
         self.guess.clear()
         for answ in pre_answer:
-            if answ.startswith('/') and len(answ[1:].split('/')) == 2:
-                temp = answ[1:].split('/')
+            if answ.startswith('//') and len(answ[1:].split('//')) == 2:
+                temp = answ[1:].split('//')
                 self.guess.append([temp[0].strip().lower(), temp[1].strip()])
             elif answ.startswith("<") and answ.endswith(">"):
                 self.hint.append(answ[1:-1].lower().strip())

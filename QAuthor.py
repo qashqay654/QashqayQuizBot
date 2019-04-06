@@ -21,13 +21,14 @@ class QAuthorConfig:
             self.working_path = config['working_path']
             self.default_game = config['default_game']
             self.logger_path = config['logger_path']
-            self.token = config['token'] # TODO: add encryption
+            self.token = config['token']  # TODO: add encryption
             self.save_media = bool(int(config['save_media']))
             self.user_db_path = config['user_db_path']
 
 
 class QAuthor:
     __name__ = "QAuthor"
+
     def __init__(self, config_path: str):
         self.config = QAuthorConfig(config_path)
 
@@ -79,7 +80,7 @@ class QAuthor:
             metadata['question_num'] = defaultdict(int)
             metadata["puzzle_folder"] = self.config.default_game
             metadata["name"] = ""
-            self.logger.info('New user added %s', update.effective_message.from_user)
+            self.logger.info('New user added %s', update.effective_user)
         update.effective_message.reply_text(text="""Hello! Welcome to the Puzzle Writer!
         How it works? At first send /new [name] to start entering your question. 
         Send a text of your puzzle as a normal telegram messages (as many as you want), also you can attach all types of media files.
@@ -134,13 +135,13 @@ class QAuthor:
         metadata['action'] = None
         update.effective_message.reply_text(text='Thanx!')
         filename = QReadWrite.save_to_file(metadata['puzzle_buffer'][-1], metadata['answer_buffer'][-1],
-                                                  update.effective_message.from_user, metadata,
-                                                  puzzle_dir=self.config.working_path,
-                                                  bot=context.bot,
-                                                  save_media=self.config.save_media
-                                                  )
+                                           update.effective_message.from_user, metadata,
+                                           puzzle_dir=self.config.working_path,
+                                           bot=context.bot,
+                                           save_media=self.config.save_media
+                                           )
         self.logger.info('New puzzle saved from %s, filename %s',
-                         update.effective_message.from_user, filename)
+                         update.effective_user, filename)
 
     def __set_answer(self, update, context):
         metadata = self.__get_chat_meta(update, context)
@@ -160,7 +161,7 @@ class QAuthor:
                 text="Name: " + " ".join(metadata['name'].split('_')))
         if len(metadata['puzzle_buffer'][-1]) > 0:
             QReadWrite.send(metadata['puzzle_buffer'][-1], context.bot,
-                                   update.effective_message.chat_id, preview=True)
+                            update.effective_message.chat_id, preview=True)
         else:
             update.effective_message.reply_text(text="Nothing in buffer")
         if metadata['action'] == 'answer' or metadata['action'] is None:
@@ -171,8 +172,8 @@ class QAuthor:
             hint = "Hint: "
             sep_h = ''
             for answ in metadata['answer_buffer'][-1]:
-                if answ.startswith('/') and len(answ[1:].split('/')) == 2:
-                    temp = answ[1:].split('/')
+                if answ.startswith('//') and len(answ[1:].split('//')) == 2:
+                    temp = answ[1:].split('//')
                     guess += sep_g + temp[0] + ' "' + temp[1] + '"'
                     sep_g = ', '
                 elif answ.startswith("<") and answ.endswith(">"):
@@ -197,9 +198,9 @@ class QAuthor:
             name = '_'.join(context.args)
             if self.__check_name(name):
                 metadata['name'] = name
-                update.effective_message.reply_text(text="New name: "+name)
+                update.effective_message.reply_text(text="New name: " + name)
             else:
-                update.effective_message.reply_text(text=name+" is not valid")
+                update.effective_message.reply_text(text=name + " is not valid")
         else:
             update.effective_message.reply_text(
                 text="Question already saved. Please specify a name before calling /end next time")
@@ -255,7 +256,7 @@ class QAuthor:
 
     def __set_game_folder(self, update, context):
         update.effective_message.reply_text(text='Choose game',
-                                  reply_markup=QReadWrite.parse_game_folders_markup(self.config.working_path))
+                                            reply_markup=QReadWrite.parse_game_folders_markup(self.config.working_path))
 
     def __game_folder_button(self, update, context):
         query = update.callback_query

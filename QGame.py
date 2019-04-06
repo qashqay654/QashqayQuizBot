@@ -99,7 +99,7 @@ class QGame:
                           '/setlevel - Выбрать уровень\n'
                           '/settings - Настройки игры (режим и no spoilers)\n'
                           '/start - Начать игру\n'
-                          '/help - Вызвать подробную подсказку\n'
+                          '/help - Вызвать подробную инструкцию\n'
                           '/credits - Авторам\n'
                           '/reset - Сброс прогресса игры \n'
                           "\n"
@@ -108,7 +108,10 @@ class QGame:
             metadata['message_stack'].append(
                 context.bot.sendMessage(chat_id=chat_id, text=reply_text))
             self.__set_game(update, context)
-            self.logger.info('New user added %s', update.effective_message.from_user)
+            self.logger.info('New user added %s', update.effective_user)
+        else:
+            question, path = metadata['quiz'][metadata['game_type']].get_new_question()
+            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
 
     def __question(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -145,7 +148,7 @@ class QGame:
             return
 
         self.logger.info('User %s answered %s in game %s on question %s',
-                         update.effective_message.from_user,
+                         update.effective_user,
                          answer,
                          metadata['game_type'],
                          metadata['quiz'][metadata['game_type']].last_question_num
@@ -153,7 +156,7 @@ class QGame:
         correctness = metadata['quiz'][metadata['game_type']].check_answer(answer)
         if correctness == AnswerCorrectness.CORRECT:
             self.logger.info('User %s solved puzzle %s from %s',
-                             update.effective_message.from_user, metadata['quiz'][metadata['game_type']].last_question_num, metadata['game_type'])
+                             update.effective_user, metadata['quiz'][metadata['game_type']].last_question_num, metadata['game_type'])
             if metadata['no_spoiler']:
                 for msg in metadata['message_stack']:
                     try:
@@ -211,7 +214,7 @@ class QGame:
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
             metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
             self.logger.info('User %s reset %s',
-                             update.effective_message.from_user,
+                             update.effective_user,
                              metadata['game_type'])
         else:
             update.effective_message.delete()
@@ -292,7 +295,7 @@ class QGame:
             reply_markup=self.__settings_main_markup()
         )
         self.logger.info('User %s set spoiler mode to %s',
-                         update.effective_message.from_user,
+                         update.effective_user,
                          button)
 
     # Game mode settings
@@ -328,7 +331,7 @@ class QGame:
                                                                   context.bot,
                                                                   update.effective_message.chat_id)
         self.logger.info('User %s set new game type %s',
-                         update.effective_message.from_user,
+                         update.effective_user,
                          metadata['game_type'])
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
         metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
