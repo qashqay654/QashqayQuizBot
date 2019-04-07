@@ -24,8 +24,7 @@ class QQuizKernel:
         self.working_dir = os.path.join(working_dir, game_mode, 'master')
         self.config = QQuizKernelConfig(os.path.join(working_dir, game_mode))
 
-        self.levels = natsorted([dr for dr in os.listdir(self.working_dir) \
-                              if os.path.isdir(os.path.join(self.working_dir, dr))])
+        self.levels = self.__list_levels()
         self._last_question_num = 0
         self.puzzle_dir = os.path.join(self.working_dir, self.levels[self._last_question_num])
 
@@ -37,9 +36,11 @@ class QQuizKernel:
         if bot:
             bot.sendMessage(text=self.config.intro_message, chat_id=chat_id)
 
+    def __list_levels(self):
+        return natsorted([dr for dr in os.listdir(self.working_dir) \
+                   if os.path.isdir(os.path.join(self.working_dir, dr)) and not dr.startswith('-')])
     def __get_question(self):
-        self.levels = natsorted([dr for dr in os.listdir(self.working_dir) \
-                              if os.path.isdir(os.path.join(self.working_dir, dr))])
+        self.levels = self.__list_levels()
         self.puzzle_dir = os.path.join(self.working_dir, self.levels[self._last_question_num])
         self.question = QReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'question.pickle'))
         pre_answer = QReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'answer.pickle'))
@@ -47,13 +48,13 @@ class QQuizKernel:
         self.hint.clear()
         self.guess.clear()
         for answ in pre_answer:
-            if answ.startswith('//') and len(answ[1:].split('//')) == 2:
-                temp = answ[1:].split('//')
-                self.guess.append([temp[0].strip().lower(), temp[1].strip()])
+            if answ.startswith('//') and len(answ[2:].split('//')) == 2:
+                temp = answ[2:].split('//')
+                self.guess.append([temp[0].strip().lower().replace('ё','е'), temp[1].strip()])
             elif answ.startswith("<") and answ.endswith(">"):
                 self.hint.append(answ[1:-1].lower().strip())
             else:
-                self.answer.append(answ.lower().strip())
+                self.answer.append(answ.lower().strip().replace('ё','е'))
         if not len(self.answer):
             self.answer.append("")
         if not len(self.hint):
@@ -72,10 +73,10 @@ class QQuizKernel:
             return "Для этой загадки нет подсказок"
 
     def check_answer(self, answer):
-        if answer.lower() in self.answer:
+        if answer.lower().replace('ё','е') in self.answer:
             return AnswerCorrectness.CORRECT
         for guess in self.guess:
-            if answer.lower() == guess[0]:
+            if answer.lower().replace('ё','е') == guess[0]:
                 return guess[1]
         else:
             return "Нет"
@@ -86,7 +87,7 @@ class QQuizKernel:
 
     def next(self):
         if self.config.random_levels:
-            self._last_question_num = np.random.randint(0, len(self.levels))
+            self._last_question_num = np.random.randint(0, len(self.levels))  # TODO: переделать, чтобы не повторялись уровни
         else:
             self._last_question_num += 1
         if self._last_question_num >= len(self.levels):
@@ -94,8 +95,7 @@ class QQuizKernel:
 
     def get_all_levels(self):
         if self.config.allow_to_change_level:
-            self.levels = natsorted([dr for dr in os.listdir(self.working_dir) \
-                                     if os.path.isdir(os.path.join(self.working_dir, dr))])
+            self.levels = self.__list_levels()
             return [level.split('-@') for level in self.levels]
         else:
             return None
@@ -112,7 +112,3 @@ class QQuizKernel:
             return self.answer[0]
         else:
             return "В данной игре нельзя посмотреть ответ"
-
-# TODO: add level choose to game.
-# TODO: get answer
-# TODO: перевести на русский

@@ -44,41 +44,74 @@ class QReadWrite:
         buffer.append(message.text)
 
     @staticmethod
-    def send(buffer, bot, chat_id, puzzle_dir="", preview=True):
+    def send(buffer, bot, chat_id, puzzle_dir="", preview=True, reply_markup=None, game_of_day=False):
         message_stack = []
         if '-@' in puzzle_dir:
             num, name = puzzle_dir.split('/')[-1].split('-@')
-            message_stack.append(bot.sendMessage(chat_id, text=str(int(num)+1) +". "+ " ".join(name.split('_'))))
-        for message in buffer:
+            if game_of_day:
+                message_stack.append(
+                    bot.sendMessage(chat_id, text="Загадка дня: " + " ".join(name.split('_'))))
+            else:
+                message_stack.append(bot.sendMessage(chat_id, text=str(int(num)+1) + ". " + " ".join(name.split('_'))))
+        reply_markup_ = None
+        for i, message in enumerate(buffer):
             message_type = message[0]
             first_field = message[1]
             second_field = message[2]
+            if i == len(buffer) - 1:
+                reply_markup_ = reply_markup
             if message[4] and not preview:
                 first_field = open(os.path.join(puzzle_dir, first_field), 'rb')
             if message_type == FileType.Text:
-                message_stack.append(bot.sendMessage(chat_id, text=first_field))
+                message_stack.append(bot.sendMessage(chat_id,
+                                                     text=first_field,
+                                                     reply_markup=reply_markup_))
             elif message_type == FileType.Location:
-                message_stack.append(bot.sendLocation(
-                    chat_id, longitude=first_field, latitude=second_field))
+                message_stack.append(bot.sendLocation(chat_id,
+                                                      longitude=first_field,
+                                                      latitude=second_field,
+                                                      reply_markup=reply_markup_))
             elif message_type == FileType.Contact:
-                message_stack.append(bot.sendContact(
-                    chat_id, phone_number=first_field, first_name=second_field))
+                message_stack.append(bot.sendContact(chat_id,
+                                                     phone_number=first_field,
+                                                     first_name=second_field,
+                                                     reply_markup=reply_markup_))
             elif message_type == FileType.Photo:
-                message_stack.append(bot.sendPhoto(chat_id, first_field, caption=second_field))
+                message_stack.append(bot.sendPhoto(chat_id,
+                                                   first_field,
+                                                   caption=second_field,
+                                                   reply_markup=reply_markup_))
             elif message_type == FileType.Sticker:
-                message_stack.append(bot.sendSticker(chat_id, first_field))
+                message_stack.append(bot.sendSticker(chat_id,
+                                                     first_field,
+                                                     reply_markup=reply_markup_))
             elif message_type == FileType.Audio:
-                message_stack.append(bot.sendAudio(chat_id, first_field, caption=second_field))
+                message_stack.append(bot.sendAudio(chat_id,
+                                                   first_field,
+                                                   caption=second_field,
+                                                   reply_markup=reply_markup_))
             elif message_type == FileType.Voice:
-                message_stack.append(bot.sendVoice(chat_id, first_field, caption=second_field))
+                message_stack.append(bot.sendVoice(chat_id,
+                                                   first_field,
+                                                   caption=second_field,
+                                                   reply_markup=reply_markup_))
             elif message_type == FileType.Video:
-                message_stack.append(bot.sendVideo(chat_id, first_field, caption=second_field))
+                message_stack.append(bot.sendVideo(chat_id,
+                                                   first_field,
+                                                   caption=second_field,
+                                                   reply_markup=reply_markup_))
             elif message_type == FileType.VideoNote:
-                message_stack.append(bot.sendVideoNote(chat_id, first_field))
+                message_stack.append(bot.sendVideoNote(chat_id,
+                                                       first_field,
+                                                       reply_markup=reply_markup_))
             elif message_type == FileType.Document:
-                message_stack.append(bot.sendDocument(chat_id, first_field, caption=second_field))
+                message_stack.append(bot.sendDocument(chat_id, first_field,
+                                                      caption=second_field,
+                                                      reply_markup=reply_markup_))
             elif message_type == FileType.Animation:
-                message_stack.append(bot.sendAnimation(chat_id, first_field, caption=second_field))
+                message_stack.append(bot.sendAnimation(chat_id, first_field,
+                                                       caption=second_field,
+                                                       reply_markup=reply_markup_))
         return message_stack
 
     @staticmethod
@@ -112,11 +145,11 @@ class QReadWrite:
         return filename_q
 
     @staticmethod
-    def parse_game_folders_markup(parent):
+    def parse_game_folders_markup(parent, is_author=False):
         dirs = os.listdir(parent)
         keyboard = [[]]
         for dr in dirs:
-            if dr.startswith('.'): continue
+            if dr.startswith('.') and not is_author: continue
             if len(keyboard[-1]) == 2:
                 keyboard.append([])
             keyboard[-1].append(InlineKeyboardButton(dr, callback_data='puzzname-' + dr))

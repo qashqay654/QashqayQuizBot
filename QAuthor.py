@@ -81,12 +81,11 @@ class QAuthor:
             metadata["puzzle_folder"] = self.config.default_game
             metadata["name"] = ""
             self.logger.info('New user added %s', update.effective_user)
-        update.effective_message.reply_text(text="""Hello! Welcome to the Puzzle Writer!
-        How it works? At first send /new [name] to start entering your question. 
-        Send a text of your puzzle as a normal telegram messages (as many as you want), also you can attach all types of media files.
-        When you finish send /setanswer. After that, list all possible answers in different messages.
-        When you done with the answer send /end to finish your question. 
-        On every stage you can check your question by sending /preview.""")
+        update.effective_message.reply_text(text="""Hello! Welcome to the Puzzle Writer! How it works? At first send 
+        /new [name] to start entering your question. Send a text of your puzzle as a normal telegram messages (as 
+        many as you want), also you can attach all types of media files. When you finish send /setanswer. After that, 
+        list all possible answers in different messages. When you done with the answer send /end to finish your 
+        question. On every stage you can check your question by sending /preview.""")
 
     def __new(self, update, context):
         metadata = self.__get_chat_meta(update, context)
@@ -150,9 +149,11 @@ class QAuthor:
                 text="Please begin question or finish previous answer /new or /end")
             return
         metadata['action'] = 'answer'
-        update.effective_message.reply_text(text="Enter all possible answers in different messages.When you finish enter /end.\n\
-    If you want to add correct guess, fill it in tildas: ~guess~Message, and the Message will appear after that guess.\n\
-    If you want to add hint, fill it in triangular brakets: <Hint>, and that Hint will appear in puzzle after /hint command")
+        update.effective_message.reply_text(text="Enter all possible answers in different messages.When you finish "
+                                                 "enter /end.\n If you want to add correct guess, fill it in tildas: "
+                                                 "~guess~Message, and the Message will appear after that guess.\n If "
+                                                 "you want to add hint, fill it in triangular brakets: <Hint>, "
+                                                 "and that Hint will appear in puzzle after /hint command")
 
     def __preview(self, update, context):
         metadata = self.__get_chat_meta(update, context)
@@ -185,7 +186,8 @@ class QAuthor:
             update.effective_message.reply_text(
                 text=answs + "\n" + guess + "\n" + hint)
 
-    def __check_name(self, name):
+    @staticmethod
+    def __check_name(name):
         restricted_chars = set('< >|\:()&;.,-?*')
         if any((c in restricted_chars) for c in name):
             return False
@@ -236,7 +238,8 @@ class QAuthor:
         else:
             metadata['action'] = None
 
-    def __help(self, update, context):
+    @staticmethod
+    def __help(update, context):
         update.effective_message.reply_text(text="""At first send /new [name] to start entering your question. 
     Send a text of your puzzle as a normal telegram messages (as many as you want), also
     you can attach all types of media files.
@@ -256,7 +259,8 @@ class QAuthor:
 
     def __set_game_folder(self, update, context):
         update.effective_message.reply_text(text='Choose game',
-                                            reply_markup=QReadWrite.parse_game_folders_markup(self.config.working_path))
+                                            reply_markup=QReadWrite.parse_game_folders_markup(self.config.working_path,
+                                                                                              True))
 
     def __game_folder_button(self, update, context):
         query = update.callback_query

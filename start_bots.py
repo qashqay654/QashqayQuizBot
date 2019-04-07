@@ -45,7 +45,6 @@ def main():
         game_tread.start()
         auth_tread.start()
 
-
         while True:
             time.sleep(0.5)
 
