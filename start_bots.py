@@ -58,5 +58,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+    trd = threading.Thread()
 # TODO: разобраться с логгером

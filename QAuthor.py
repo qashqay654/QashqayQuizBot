@@ -157,34 +157,40 @@ class QAuthor:
 
     def __preview(self, update, context):
         metadata = self.__get_chat_meta(update, context)
-        if metadata['name']:
-            update.effective_message.reply_text(
-                text="Name: " + " ".join(metadata['name'].split('_')))
-        if len(metadata['puzzle_buffer'][-1]) > 0:
-            QReadWrite.send(metadata['puzzle_buffer'][-1], context.bot,
-                            update.effective_message.chat_id, preview=True)
+        if metadata['action']:
+            if len(metadata['puzzle_buffer'][-1]) > 0:
+                if metadata['name']:
+                    update.effective_message.reply_text(
+                        text="Name: " + " ".join(metadata['name'].split('_')))
+
+                QReadWrite.send(metadata['puzzle_buffer'][-1], context.bot,
+                                update.effective_message.chat_id)
+
+            else:
+                update.effective_message.reply_text(text="Nothing in buffer")
+            if metadata['action'] == 'answer' or metadata['action'] is None:
+                answs = "Answers: "
+                sep_a = ''
+                guess = "Guess: "
+                sep_g = ''
+                hint = "Hint: "
+                sep_h = ''
+                for answ in metadata['answer_buffer'][-1]:
+                    if answ.startswith('?') and len(answ[1:].split('?')) == 2:
+                        temp = answ[1:].split('?')
+                        guess += sep_g + temp[0] + ' "' + temp[1] + '"'
+                        sep_g = ', '
+                    elif answ.startswith("<") and answ.endswith(">"):
+                        hint += sep_h + answ[1:-1]
+                        sep_h = ', '
+                    else:
+                        answs += sep_a + answ
+                        sep_a = ', '
+                update.effective_message.reply_text(
+                    text=answs + "\n" + guess + "\n" + hint)
         else:
             update.effective_message.reply_text(text="Nothing in buffer")
-        if metadata['action'] == 'answer' or metadata['action'] is None:
-            answs = "Answers: "
-            sep_a = ''
-            guess = "Guess: "
-            sep_g = ''
-            hint = "Hint: "
-            sep_h = ''
-            for answ in metadata['answer_buffer'][-1]:
-                if answ.startswith('//') and len(answ[1:].split('//')) == 2:
-                    temp = answ[1:].split('//')
-                    guess += sep_g + temp[0] + ' "' + temp[1] + '"'
-                    sep_g = ', '
-                elif answ.startswith("<") and answ.endswith(">"):
-                    hint += sep_h + answ[1:-1]
-                    sep_h = ', '
-                else:
-                    answs += sep_a + answ
-                    sep_a = ', '
-            update.effective_message.reply_text(
-                text=answs + "\n" + guess + "\n" + hint)
+
 
     @staticmethod
     def __check_name(name):

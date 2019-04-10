@@ -1,5 +1,6 @@
 import os
 import pickle
+import uuid
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from QTypes import FileType
@@ -37,14 +38,14 @@ class QReadWrite:
     @staticmethod
     def push_puzzle(message, buffer):
         mes_type, is_media, first_field, second_field = QReadWrite.get_message_meta(message)
-        buffer.append([mes_type, first_field, second_field, is_media, False])
+        buffer.append([mes_type, first_field, second_field, is_media, ''])
 
     @staticmethod
     def push_answer(message, buffer):
         buffer.append(message.text)
 
     @staticmethod
-    def send(buffer, bot, chat_id, puzzle_dir="", preview=True, reply_markup=None, game_of_day=False):
+    def send(buffer, bot, chat_id, puzzle_dir="", reply_markup=None, game_of_day=False):
         message_stack = []
         if '-@' in puzzle_dir:
             num, name = puzzle_dir.split('/')[-1].split('-@')
@@ -60,7 +61,7 @@ class QReadWrite:
             second_field = message[2]
             if i == len(buffer) - 1:
                 reply_markup_ = reply_markup
-            if message[4] and not preview:
+            if message[4]:
                 first_field = open(os.path.join(puzzle_dir, first_field), 'rb')
             if message_type == FileType.Text:
                 message_stack.append(bot.sendMessage(chat_id,
@@ -133,9 +134,11 @@ class QReadWrite:
 
         for i, msg in enumerate(message):
             if save_media and msg[3]:
-                unique_filename = os.path.join(puzzle_dir_, msg[1])
-                bot.getFile(msg[1]).download(unique_filename)
-                message[i][-1] = True
+
+                unique_filename = uuid.uuid4().hex#os.path.join(puzzle_dir_, msg[1])
+                bot.getFile(msg[1]).download(os.path.join(puzzle_dir_, unique_filename))
+                message[i][1] = unique_filename
+                message[i][-1] = os.path.join(puzzle_dir_, unique_filename)
 
         with open(filename_q, 'wb') as handle:
             pickle.dump(message, handle)

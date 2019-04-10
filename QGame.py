@@ -2,8 +2,10 @@ import logging
 from collections import defaultdict
 from telegram.ext import Updater, CommandHandler, PicklePersistence, CallbackQueryHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import Unauthorized
 import yaml
-
+import threading
+import time
 
 from QReadWrite import QReadWrite
 from QTypes import AnswerCorrectness
@@ -48,6 +50,7 @@ class QGame:
             self.game_of_day = QQuizKernel(self.config.games_db_path, self.config.game_of_the_day)
             self.__schedule_gotd()
             self.gotd_prev_message = []
+        self.input_event = self.__send_all_from_input()
 
     def start_polling(self, demon=False):
         self.updater.start_polling()
@@ -57,6 +60,7 @@ class QGame:
     def stop_polling(self):
         if hasattr(self, 'shed_event'):
             self.shed_event.set()
+        self.input_event.set()
         self.updater.stop()
 
     def __get_chat_meta(self, update, context):
@@ -123,7 +127,7 @@ class QGame:
             self.logger.info('New user added %s', update.effective_user)
         else:
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
 
     def __question(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -133,7 +137,7 @@ class QGame:
         metadata['message_stack'].append(update.effective_message)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
 
-        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
 
     def __hint(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -182,7 +186,7 @@ class QGame:
 
             metadata['quiz'][metadata['game_type']].next()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
 
         elif type(correctness) == str:
             metadata['message_stack'].append(
@@ -228,7 +232,7 @@ class QGame:
             update.effective_message.delete()
             metadata['quiz'][metadata['game_type']].reset()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
             self.logger.info('User %s reset %s',
                              update.effective_user,
                              metadata['game_type'])
@@ -310,7 +314,7 @@ class QGame:
                          update.effective_user,
                          metadata['game_type'])
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
 
         query.answer(text='Теперь играем в ' + button)
         update.effective_message.delete()
@@ -432,7 +436,7 @@ class QGame:
         button = int(query.data.split('-')[-1])
         metadata['quiz'][metadata['game_type']].set_level(button)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path, preview=False)
+        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
         update.effective_message.delete()
 
     def __help(self, update, context):
@@ -454,7 +458,6 @@ class QGame:
             "\n"
             "Если хочешь начать игру сначала, то введи /reset, но учти, что тогда потеряются все сохранения.\n"
         ), chat_id=chat_id)
-        self.__game_of_the_day_send()
 
     @staticmethod
     def __credentials(update, context):
@@ -470,6 +473,7 @@ class QGame:
 
     def __game_of_the_day_send(self):
         if self.gotd_prev_message:
+            self.game_of_day.next()
             for message in self.gotd_prev_message:
                 try:
                     #self.updater.bot.edit_message_text(text=message.text,
@@ -479,30 +483,42 @@ class QGame:
                 except:
                     self.logger.warning('No message "%s"', message)
             self.gotd_prev_message.clear()
-        user_data = self.updater.dispatcher.user_data
+
         keyboard = [[InlineKeyboardButton("Посмотреть ответ", callback_data='gotd_answ')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         if self.game_of_day:
-            self.game_of_day.next()
             question, path = self.game_of_day.get_new_question()
         else:
             return
-        for user in user_data:
+        user_data = self.updater.dispatcher.user_data
+        for user in list(user_data):
             if user_data[user]:
+                if 'game_of_day' not in user_data[user]:
+                    user_data[user]['game_of_day'] = True
                 if user_data[user]['game_of_day']:
-                    self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
-                                                              user, path,
-                                                              preview=False, reply_markup=reply_markup,
-                                                              game_of_day=True
-                                                              )
+                    try:
+                        self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
+                                                                  user, path,
+                                                                  reply_markup=reply_markup,
+                                                                  game_of_day=True
+                                                                  )
+                    except Unauthorized as ua:
+                        del user_data[user]
+                        print("User", user,"is cyka")
         chat_data = self.updater.dispatcher.chat_data
-        for chat in chat_data:
+        for chat in list(chat_data):
             if chat_data[chat]:
+                if 'game_of_day' not in chat_data[chat]:
+                    chat_data[chat]['game_of_day'] = True
                 if chat_data[chat]['game_of_day']:
-                    self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
-                                                              chat, path,
-                                                              preview=False, reply_markup=reply_markup,
-                                                              game_of_day=True)
+                    try:
+                        self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
+                                                                  chat, path,
+                                                                  reply_markup=reply_markup,
+                                                                  game_of_day=True)
+                    except Unauthorized as ua:
+                        del chat_data[chat]
+                        print("User", chat,"is cyka")
 
     def __game_of_the_day_button(self, update, context):
         query = update.callback_query
@@ -513,6 +529,46 @@ class QGame:
         schedule.every().day.at(self.config.game_of_the_day_time).do(self.__game_of_the_day_send)
         print("Scheduler set at "+self.config.game_of_the_day_time)
         self.shed_event = schedule.run_continuously()
+
+    def __send_all_from_input(self):
+        cease_continuous_run = threading.Event()
+
+        class MassiveSender(threading.Thread):
+            @classmethod
+            def run(cls):
+                while not cease_continuous_run.is_set():
+                    message = input()
+                    if not message:
+                        continue
+                    confirm = ''
+                    while not confirm in ['yes', 'no']:
+                        print("Are you sure? [yes|no]")
+                        confirm = input()
+                    if confirm == 'no':
+                        continue
+                    else:
+                        print('Sending')
+                    user_data = self.updater.dispatcher.user_data
+                    for user in list(user_data):
+                        if user_data[user]:
+                            try:
+                                self.updater.bot.sendMessage(text=message, chat_id=user)
+                            except Unauthorized as ua:
+                                del user_data[user]
+                                print("User", user, "is cyka")
+                    chat_data = self.updater.dispatcher.chat_data
+                    for chat in list(chat_data):
+                        if chat_data[chat]:
+                            try:
+                                self.updater.bot.sendMessage(text=message, chat_id=chat)
+                            except Unauthorized as ua:
+                                del chat_data[chat]
+                                print("User", chat, "is cyka")
+
+        continuous_thread = MassiveSender()
+        continuous_thread.daemon = True
+        continuous_thread.start()
+        return cease_continuous_run
 
     def init_dispatcher(self, dispatcher):
         dispatcher.add_handler(CommandHandler("start", self.__start,
@@ -551,5 +607,3 @@ class QGame:
 
         dispatcher.add_error_handler(self.__error)
         # TODO: add random talk
-
-# TODO : add catch of the day
