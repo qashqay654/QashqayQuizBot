@@ -1,11 +1,11 @@
 import logging
 from collections import defaultdict
-from telegram.ext import Updater, CommandHandler, PicklePersistence, CallbackQueryHandler
+from telegram.ext import Updater, CommandHandler, PicklePersistence, CallbackQueryHandler, MessageHandler, Filters
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Unauthorized
 import yaml
 import threading
-import time
+import os
 
 from QReadWrite import QReadWrite
 from QTypes import AnswerCorrectness
@@ -23,6 +23,7 @@ class QGameConfig:
             self.token = config['token']  # TODO: add encryption
             self.user_db_path = config['user_db_path']
             self.no_spoilers_default = bool(int(config['no_spoilers_default']))
+            self.admin_id = int(config['admin_id'])
             try:
                 self.game_of_the_day = config['game_of_the_day']
                 self.game_of_the_day_time = config['game_of_the_day_time']
@@ -51,6 +52,7 @@ class QGame:
             self.__schedule_gotd()
             self.gotd_prev_message = []
         self.input_event = self.__send_all_from_input()
+        self.admin_text = ''
 
     def start_polling(self, demon=False):
         self.updater.start_polling()
@@ -74,8 +76,8 @@ class QGame:
                 metadata['game_type'] = self.config.default_game
             if 'quiz' not in metadata.keys():
                 metadata['quiz'] = {}
-                metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.games_db_path,
-                                                                      metadata['game_type'],
+                path_dir = os.path.join(self.config.games_db_path, metadata['game_type'], 'master')
+                metadata['quiz'][metadata['game_type']] = QQuizKernel(path_dir,
                                                                       context.bot,
                                                                       update.effective_message.chat_id)
             if 'no_spoiler' not in metadata.keys():
@@ -84,6 +86,12 @@ class QGame:
                 metadata['message_stack'] = []
             if 'game_of_day' not in metadata.keys():
                 metadata['game_of_day'] = True
+            if 'answer_from_text' not in metadata.keys():
+                metadata['answer_from_text'] = True
+            if 'version' not in metadata.keys():
+                metadata['version'] = 0.1
+                old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
+                metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
         return metadata
 
     @staticmethod
@@ -92,6 +100,13 @@ class QGame:
             update.effective_message.reply_text("Видимо что-то сломалось. Введите /start, чтобы начать")
         return metadata
 
+    def __get_game_meta(self, game_metadata):
+        try:
+            old_data = game_metadata.serialize_to_db()
+        except:
+            old_data = game_metadata.working_dir, game_metadata.last_question_num
+        return old_data
+
     def __start(self, update, context):
         metadata = self.__get_chat_meta(update, context)
         chat_id = update.effective_message.chat_id
@@ -99,13 +114,15 @@ class QGame:
         if not metadata:
             metadata['game_type'] = self.config.default_game
             metadata['quiz'] = defaultdict(QQuizKernel)
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.games_db_path,
-                                                                  metadata['game_type']
-                                                                  )
+            path_dir = os.path.join(self.config.games_db_path, metadata['game_type'], 'master')
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(path_dir, last_question=0)
+            metadata['quiz_data'] = (path_dir, 0)
             metadata['no_spoiler'] = self.config.no_spoilers_default \
                 if update.effective_message.chat.type != 'private' else False
             metadata['message_stack'] = []
             metadata['game_of_day'] = True
+            metadata['answer_from_text'] = True
+            metadata['version'] = 0.1
             reply_text = ("	Привет! Добро пожаловать в игру!\n"
                           "\n"
                           '/answer [ans] - Дать ответ на вопрос (/+tab ответ)\n'
@@ -126,6 +143,10 @@ class QGame:
             self.__set_game(update, context)
             self.logger.info('New user added %s', update.effective_user)
         else:
+            # этот странный трюк нужен в случае, если мы что-то обновили в игровом движке
+            old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
+
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
             metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
 
@@ -157,7 +178,12 @@ class QGame:
         chat_id = update.effective_message.chat_id
         metadata['message_stack'].append(update.effective_message)
 
-        answer = ' '.join(context.args).lower()
+        if update.effective_message.text.startswith('/'):
+            answer = ' '.join(context.args).lower()
+        else:
+            answer = update.effective_message.text
+            if not metadata['answer_from_text']:
+                return
         if not answer:
             metadata['message_stack'].append(
                 update.effective_message.reply_text(text="Укажи ответ аргументом после команды /answer, например: "
@@ -274,7 +300,9 @@ class QGame:
         keyboard = [[InlineKeyboardButton("Игры", callback_data='m1-game_type'),
                      InlineKeyboardButton("No spoilers", callback_data='m2-no_spoiler_mode')],
                     [InlineKeyboardButton("Загадка дня", callback_data='m3-gotd'),
-                    InlineKeyboardButton("Done", callback_data='done')]]
+                    InlineKeyboardButton("Быстрый ответ", callback_data='m4-afm')],
+                    [InlineKeyboardButton("Done", callback_data='done')]
+                    ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
 
@@ -304,10 +332,13 @@ class QGame:
         button = query.data.split('-')[-1]
         if button in metadata['quiz'].keys():
             metadata['game_type'] = button
+            old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
         else:
             metadata['game_type'] = button
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(self.config.games_db_path,
-                                                                  metadata['game_type'],
+            path_dir = os.path.join(self.config.games_db_path, metadata['game_type'], 'master')
+            metadata['quiz'][metadata['game_type']] = QQuizKernel(path_dir,
+                                                                  0,
                                                                   context.bot,
                                                                   update.effective_message.chat_id)
         self.logger.info('User %s set new game type %s',
@@ -393,7 +424,48 @@ class QGame:
             text=self.__settings_main_text(),
             reply_markup=self.__settings_main_markup()
         )
-        self.logger.info('User %s set spoiler mode to %s',
+        self.logger.info('User %s set game of the day to %s',
+                         update.effective_user,
+                         button)
+
+    # Answer message settings
+    def __settings_answer_message(self, update, context):
+        query = update.callback_query
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        if not metadata:
+            return
+        query.edit_message_text(text=self.__settings_answer_message_text(metadata['answer_from_text']),
+                                reply_markup=self.__settings_answer_message_markup())
+
+    @staticmethod
+    def __settings_answer_message_text(status):
+        return "При включенном режиме, ответы будут приниматься через обычные текстовые сообщения." \
+               "Пожалуйста учти, что бот логгирует все ответы на задания, чтобы улучшать ход игры," \
+               "поэтому во включенном состоянии будут логироваться все сообщения в этом чате. "+ \
+               " (сейчас " + str(status) + ")"
+
+    @staticmethod
+    def __settings_answer_message_markup():
+        keyboard = [[InlineKeyboardButton("Вкл", callback_data='m4_1-1'),
+                     InlineKeyboardButton("Выкл", callback_data='m4_1-0')],
+                    [InlineKeyboardButton("Главное меню", callback_data='main')]
+                    ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        return reply_markup
+
+    def __settings_answer_message_button(self, update, context):
+        query = update.callback_query
+        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        if not metadata:
+            return
+        button = bool(int(query.data.split('-')[-1]))
+        metadata['answer_from_text'] = button
+        query.answer(text="Ответы будут приниматься из сообщений" if button else "Ответ только после команды /answer")
+        query.edit_message_text(
+            text=self.__settings_main_text(),
+            reply_markup=self.__settings_main_markup()
+        )
+        self.logger.info('User %s set answer message mode to %s',
                          update.effective_user,
                          button)
 
@@ -414,7 +486,7 @@ class QGame:
                 keyboard.append([])
             num, lev = level[0], " ".join(level[1].split('_'))
             keyboard[-1].append(
-                InlineKeyboardButton(str(int(num) + 1) + '. ' + lev, callback_data='game_level-' + str(i)))
+                InlineKeyboardButton(str(int(num) + 1) + '. ' + lev, callback_data='game_level-' + level[0] + "-@" + level[1]))
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
 
@@ -433,8 +505,8 @@ class QGame:
         chat_id = update.effective_message.chat_id
         if not metadata:
             return
-        button = int(query.data.split('-')[-1])
-        metadata['quiz'][metadata['game_type']].set_level(button)
+        button = '-'.join(query.data.split('-')[1:])
+        metadata['quiz'][metadata['game_type']].set_level_by_name(button)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
         metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
         update.effective_message.delete()
@@ -530,6 +602,46 @@ class QGame:
         print("Scheduler set at "+self.config.game_of_the_day_time)
         self.shed_event = schedule.run_continuously()
 
+    def __send_all_from_admin(self, update, context):
+        user_id = update.effective_message.from_user.id
+        chat_id = update.effective_message.chat_id
+        if user_id == self.config.admin_id:
+            text = update.effective_message.text[11:].strip()#' '.join(context.args)
+            if not text:
+                update.effective_message.reply_text(text="Нет текста")
+                return
+            update.effective_message.reply_text(text="Preview")
+
+            keyboard = [[InlineKeyboardButton("Шлем", callback_data='admin_send-1'),
+                         InlineKeyboardButton("Не шлем", callback_data='admin_send-0')],
+                        ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            context.bot.sendMessage(text=text, chat_id=chat_id, reply_markup=reply_markup)
+            self.admin_text = text
+
+    def __send_all_from_admin_button(self, update, context):
+        query = update.callback_query
+        button = bool(int(query.data.split('-')[-1]))
+        query.edit_message_text(text=self.admin_text)
+        if button:
+            user_data = self.updater.dispatcher.user_data
+            for user in list(user_data):
+                if user_data[user]:
+                    try:
+                        self.updater.bot.sendMessage(text=self.admin_text, chat_id=user)
+                    except Unauthorized as ua:
+                        del user_data[user]
+                        print("User", user, "is cyka")
+            chat_data = self.updater.dispatcher.chat_data
+            for chat in list(chat_data):
+                if chat_data[chat]:
+                    try:
+                        self.updater.bot.sendMessage(text=self.admin_text, chat_id=chat)
+                    except Unauthorized as ua:
+                        del chat_data[chat]
+                        print("User", chat, "is cyka")
+        self.admin_text = ''
+
     def __send_all_from_input(self):
         cease_continuous_run = threading.Event()
 
@@ -598,12 +710,17 @@ class QGame:
         dispatcher.add_handler(CallbackQueryHandler(self.__settings_spoiler_button, pattern='^m2_1-'))
         dispatcher.add_handler(CallbackQueryHandler(self.__settings_gotd, pattern='^m3-'))
         dispatcher.add_handler(CallbackQueryHandler(self.__settings_gotd_button, pattern='^m3_1-'))
-
         dispatcher.add_handler(CallbackQueryHandler(self.__game_of_the_day_button, pattern='gotd_answ'))
+        dispatcher.add_handler(CallbackQueryHandler(self.__settings_answer_message, pattern='^m4-'))
+        dispatcher.add_handler(CallbackQueryHandler(self.__settings_answer_message_button, pattern='^m4_1-'))
+
+        dispatcher.add_handler(CommandHandler("adminsend", self.__send_all_from_admin))
+        dispatcher.add_handler(CallbackQueryHandler(self.__send_all_from_admin_button, pattern='^admin_send-'))
 
         dispatcher.add_handler(CommandHandler("setlevel", self.__set_level,
                                               pass_user_data=True, pass_chat_data=True))
         dispatcher.add_handler(CallbackQueryHandler(self.__levels_button, pattern='^game_level-'))
 
+        dispatcher.add_handler(MessageHandler(Filters.text, self.__answer))
         dispatcher.add_error_handler(self.__error)
         # TODO: add random talk

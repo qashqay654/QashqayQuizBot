@@ -12,11 +12,11 @@ def make_new_game(name):
         return
     os.mkdir(path)
     os.mkdir(os.path.join(path, 'master'))
-    sample_config = '''allow_to_change_level: 0
+    sample_config = '''change_level_step: 0
 random_levels: 0
 allow_to_get_answer: 0
 intro_message: Hello, world!'''
-    with open(os.path.join(path, 'config.yaml'), 'w') as handle:
+    with open(os.path.join(path, 'master', 'config.yaml'), 'w') as handle:
         handle.write(sample_config)
     sample_game = os.path.join(path, 'master', '999-@The End')
     os.mkdir(sample_game)
@@ -31,6 +31,7 @@ intro_message: Hello, world!'''
     with open(os.path.join(sample_game, 'answer.pickle'), 'wb') as handle:
         pickle.dump(sample_answer, handle)
     print("Success")
+
 
 if __name__ == "__main__":
     args = sys.argv[1:]

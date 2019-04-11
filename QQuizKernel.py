@@ -11,7 +11,7 @@ class QQuizKernelConfig:
     def __init__(self, game_mode: str):
         with open(os.path.join(game_mode, 'config.yaml'), 'r') as handle:
             config = yaml.load(handle, Loader=yaml.BaseLoader)
-            self.allow_to_change_level = bool(int(config['allow_to_change_level']))
+            self.change_level_step = int(config['change_level_step'])
             self.random_levels = bool(int(config['random_levels']))
             self.allow_to_get_answer = bool(int(config['allow_to_get_answer']))
             self.intro_message = config['intro_message']
@@ -19,14 +19,15 @@ class QQuizKernelConfig:
 
 class QQuizKernel:
 
-    def __init__(self, working_dir: str, game_mode: str, bot=None, chat_id=None):
+    def __init__(self, working_dir: str, last_question=0, bot=None, chat_id=None):
 
-        self.working_dir = os.path.join(working_dir, game_mode, 'master')
-        self.config = QQuizKernelConfig(os.path.join(working_dir, game_mode))
+        print("Game initialized")
+        self.working_dir = working_dir
+        self.config = QQuizKernelConfig(working_dir)
 
-        self.levels = self.__list_levels()
-        self._last_question_num = 0
-        self.puzzle_dir = os.path.join(self.working_dir, self.levels[self._last_question_num])
+        self._last_question_num = last_question
+        self.puzzle_dir = os.path.join(self.working_dir,
+                                       self.__list_levels()[self._last_question_num])
 
         self.question = [[FileType.Text, "", "", False, False]]
         self.answer = [""]
@@ -36,12 +37,16 @@ class QQuizKernel:
         if bot:
             bot.sendMessage(text=self.config.intro_message, chat_id=chat_id)
 
+    def serialize_to_db(self):
+        return self.working_dir, self._last_question_num
+
     def __list_levels(self):
-        return natsorted([dr for dr in os.listdir(self.working_dir) \
+        return natsorted([dr for dr in os.listdir(self.working_dir)
                    if os.path.isdir(os.path.join(self.working_dir, dr)) and not dr.startswith('-')])
+
     def __get_question(self):
-        self.levels = self.__list_levels()
-        self.puzzle_dir = os.path.join(self.working_dir, self.levels[self._last_question_num])
+        levels = self.__list_levels()
+        self.puzzle_dir = os.path.join(self.working_dir, levels[self._last_question_num])
         self.question = QReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'question.pickle'))
         pre_answer = QReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'answer.pickle'))
         self.answer.clear()
@@ -86,24 +91,32 @@ class QQuizKernel:
         return self._last_question_num
 
     def next(self):
+        levels = self.__list_levels()
         if self.config.random_levels:
-            self._last_question_num = np.random.randint(0, len(self.levels))  # TODO: переделать, чтобы не повторялись уровни
+            self._last_question_num = np.random.randint(0, len(levels))  # TODO: переделать, чтобы не повторялись уровни
         else:
             self._last_question_num += 1
-        if self._last_question_num >= len(self.levels):
-            self._last_question_num = len(self.levels) - 1
+        if self._last_question_num >= len(levels):
+            self._last_question_num = len(levels) - 1
 
     def get_all_levels(self):
-        if self.config.allow_to_change_level:
-            self.levels = self.__list_levels()
-            return [level.split('-@') for level in self.levels]
+        if self.config.change_level_step:
+            levels = self.__list_levels()
+            return [level.split('-@') for level in levels[::self.config.change_level_step]]
         else:
             return None
 
     def set_level(self, level):
-        if self.config.allow_to_change_level:
+        if self.config.change_level_step:
             self._last_question_num = level
 
+    def set_level_by_name(self, name):
+        if self.config.change_level_step:
+            levels = self.__list_levels()
+            if name in levels:
+                self._last_question_num = levels.index(name)
+            else:
+                print('no such level', name,'in', levels)
     def reset(self):
         self._last_question_num = 0
 
