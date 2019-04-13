@@ -2,10 +2,11 @@ import logging
 from collections import defaultdict
 from telegram.ext import Updater, CommandHandler, PicklePersistence, CallbackQueryHandler, MessageHandler, Filters
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import Unauthorized
+from telegram.error import Unauthorized, ChatMigrated
 import yaml
 import threading
 import os
+from copy import deepcopy
 
 from QReadWrite import QReadWrite
 from QTypes import AnswerCorrectness
@@ -48,7 +49,8 @@ class QGame:
         self.logger = logging.getLogger(__name__)
         self.game_of_day = None
         if self.config.game_of_the_day:
-            self.game_of_day = QQuizKernel(self.config.games_db_path, self.config.game_of_the_day)
+            path_dir = os.path.join(self.config.games_db_path, self.config.game_of_the_day, 'master')
+            self.game_of_day = QQuizKernel(path_dir, 0)
             self.__schedule_gotd()
             self.gotd_prev_message = []
         self.input_event = self.__send_all_from_input()
@@ -89,7 +91,11 @@ class QGame:
             if 'answer_from_text' not in metadata.keys():
                 metadata['answer_from_text'] = True
             if 'version' not in metadata.keys():
-                metadata['version'] = 0.1
+                metadata['version'] = 0.2
+                old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
+                metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
+            if metadata['version'] != 0.2:
+                metadata['version'] = 0.2
                 old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
                 metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
         return metadata
@@ -122,7 +128,7 @@ class QGame:
             metadata['message_stack'] = []
             metadata['game_of_day'] = True
             metadata['answer_from_text'] = True
-            metadata['version'] = 0.1
+            metadata['version'] = 0.2
             reply_text = ("	Привет! Добро пожаловать в игру!\n"
                           "\n"
                           '/answer [ans] - Дать ответ на вопрос (/+tab ответ)\n'
@@ -300,7 +306,7 @@ class QGame:
         keyboard = [[InlineKeyboardButton("Игры", callback_data='m1-game_type'),
                      InlineKeyboardButton("No spoilers", callback_data='m2-no_spoiler_mode')],
                     [InlineKeyboardButton("Загадка дня", callback_data='m3-gotd'),
-                    InlineKeyboardButton("Быстрый ответ", callback_data='m4-afm')],
+                     InlineKeyboardButton("Быстрый ответ", callback_data='m4-afm')],
                     [InlineKeyboardButton("Done", callback_data='done')]
                     ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -400,7 +406,7 @@ class QGame:
 
     @staticmethod
     def __settings_gotd_text(status):
-        return "При включенном режиме загадки дня, каждый день в чат будет приходить новый вопрос" +\
+        return "При включенном режиме загадки дня, каждый день в чат будет приходить новый вопрос" + \
                " (сейчас " + str(status) + ")"
 
     @staticmethod
@@ -441,7 +447,7 @@ class QGame:
     def __settings_answer_message_text(status):
         return "При включенном режиме, ответы будут приниматься через обычные текстовые сообщения." \
                "Пожалуйста учти, что бот логгирует все ответы на задания, чтобы улучшать ход игры," \
-               "поэтому во включенном состоянии будут логироваться все сообщения в этом чате. "+ \
+               "поэтому во включенном состоянии будут логироваться все сообщения в этом чате. " + \
                " (сейчас " + str(status) + ")"
 
     @staticmethod
@@ -486,11 +492,13 @@ class QGame:
                 keyboard.append([])
             num, lev = level[0], " ".join(level[1].split('_'))
             keyboard[-1].append(
-                InlineKeyboardButton(str(int(num) + 1) + '. ' + lev, callback_data='game_level-' + level[0] + "-@" + level[1]))
+                InlineKeyboardButton(str(int(num) + 1) + '. ' + lev,
+                                     callback_data='game_level-' + level[0] + "-@" + level[1]))
+        keyboard.append([InlineKeyboardButton("Done", callback_data='done')])
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
 
-    def __set_level(self, update, context):
+    def __set_level(self, update, context):  # todo: добавить кнопку exit
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         levels_markup = self.__levels_markup(metadata['quiz'][metadata['game_type']])
         if levels_markup:
@@ -548,7 +556,7 @@ class QGame:
             self.game_of_day.next()
             for message in self.gotd_prev_message:
                 try:
-                    #self.updater.bot.edit_message_text(text=message.text,
+                    # self.updater.bot.edit_message_text(text=message.text,
                     #                                   chat_id=message.chat_id,
                     #                                   message_id=message.message_id)
                     self.updater.bot.delete_message(message.chat_id, message.message_id)
@@ -556,7 +564,8 @@ class QGame:
                     self.logger.warning('No message "%s"', message)
             self.gotd_prev_message.clear()
 
-        keyboard = [[InlineKeyboardButton("Посмотреть ответ", callback_data='gotd_answ')]]
+        keyboard = [[InlineKeyboardButton("Посмотреть ответ", callback_data='gotd_answ'),
+                     InlineKeyboardButton("Скрыть", callback_data='done')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         if self.game_of_day:
             question, path = self.game_of_day.get_new_question()
@@ -576,7 +585,9 @@ class QGame:
                                                                   )
                     except Unauthorized as ua:
                         del user_data[user]
-                        print("User", user,"is cyka")
+                        print("User", user, "is cyka")
+
+
         chat_data = self.updater.dispatcher.chat_data
         for chat in list(chat_data):
             if chat_data[chat]:
@@ -590,23 +601,62 @@ class QGame:
                                                                   game_of_day=True)
                     except Unauthorized as ua:
                         del chat_data[chat]
-                        print("User", chat,"is cyka")
+                        print("User", chat, "is cyka")
+                    except ChatMigrated as e:
+                        chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
+                        del chat_data[chat]
+                        self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
+                                                                  e.new_chat_id, path,
+                                                                  reply_markup=reply_markup,
+                                                                  game_of_day=True)
+
+    def __repeat_goth(self, update, context):
+        chat_id = update.effective_message.chat_id
+        keyboard = [[InlineKeyboardButton("Посмотреть ответ", callback_data='gotd_answ'),
+                     InlineKeyboardButton("Скрыть", callback_data='done')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        question, path = self.game_of_day.get_new_question()
+        self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
+                                                  chat_id, path,
+                                                  reply_markup=reply_markup,
+                                                  game_of_day=True
+                                                  )
 
     def __game_of_the_day_button(self, update, context):
         query = update.callback_query
         if self.game_of_day:
-            query.answer(text=self.game_of_day.get_answer())
+            query.answer(text=self.game_of_day.get_hint(), show_alert=True)
 
     def __schedule_gotd(self):
         schedule.every().day.at(self.config.game_of_the_day_time).do(self.__game_of_the_day_send)
-        print("Scheduler set at "+self.config.game_of_the_day_time)
+        #day.at(self.config.game_of_the_day_time)
+        print("Scheduler set at " + self.config.game_of_the_day_time)
         self.shed_event = schedule.run_continuously()
+
+    def __gotd_answer(self, update, context):
+        chat_id = update.effective_message.chat_id
+
+        answer = ' '.join(context.args).lower()
+        if not answer:
+            self.gotd_prev_message.append(update.effective_message.reply_text(text="Укажи ответ аргументом после "
+                                                                                   "команды /dayquiz, например: "
+                                                                                   "/dayquiz 1984"))
+            return
+
+        correctness = self.game_of_day.check_answer(answer)
+        if correctness == AnswerCorrectness.CORRECT:
+            self.gotd_prev_message.append(update.effective_message.reply_text(text="Правильно!"))
+        elif type(correctness) == str:
+            self.gotd_prev_message.append(
+                context.bot.sendMessage(chat_id=chat_id, text=correctness))
+        else:
+            self.logger.warning('Wrong answer type "%s"', correctness)
 
     def __send_all_from_admin(self, update, context):
         user_id = update.effective_message.from_user.id
         chat_id = update.effective_message.chat_id
         if user_id == self.config.admin_id:
-            text = update.effective_message.text[11:].strip()#' '.join(context.args)
+            text = update.effective_message.text[11:].strip()  # ' '.join(context.args)
             if not text:
                 update.effective_message.reply_text(text="Нет текста")
                 return
@@ -640,6 +690,10 @@ class QGame:
                     except Unauthorized as ua:
                         del chat_data[chat]
                         print("User", chat, "is cyka")
+                    except ChatMigrated as e:
+                        chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
+                        del chat_data[chat]
+                        self.updater.bot.sendMessage(text=self.admin_text, chat_id=e.new_chat_id)
         self.admin_text = ''
 
     def __send_all_from_input(self):
@@ -676,6 +730,10 @@ class QGame:
                             except Unauthorized as ua:
                                 del chat_data[chat]
                                 print("User", chat, "is cyka")
+                            except ChatMigrated as e:
+                                chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
+                                del chat_data[chat]
+                                self.updater.bot.sendMessage(text=message, chat_id=e.new_chat_id)
 
         continuous_thread = MassiveSender()
         continuous_thread.daemon = True
@@ -698,6 +756,8 @@ class QGame:
 
         dispatcher.add_handler(CommandHandler("reset", self.__reset,
                                               pass_user_data=True, pass_chat_data=True))
+        dispatcher.add_handler(CommandHandler("dq", self.__gotd_answer))
+        dispatcher.add_handler(CommandHandler("repeatdq", self.__repeat_goth))
         dispatcher.add_handler(CallbackQueryHandler(self.__reset_button, pattern='^reset-'))
 
         dispatcher.add_handler(CommandHandler("settings", self.__settings,
@@ -724,3 +784,6 @@ class QGame:
         dispatcher.add_handler(MessageHandler(Filters.text, self.__answer))
         dispatcher.add_error_handler(self.__error)
         # TODO: add random talk
+
+# todo: прописать нормальный логгер вместо принтов
+

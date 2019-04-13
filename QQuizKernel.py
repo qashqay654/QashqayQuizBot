@@ -1,4 +1,5 @@
 import os
+import re
 import yaml
 import numpy as np
 from natsort import natsorted
@@ -21,7 +22,7 @@ class QQuizKernel:
 
     def __init__(self, working_dir: str, last_question=0, bot=None, chat_id=None):
 
-        print("Game initialized")
+        #print("Game initialized")
         self.working_dir = working_dir
         self.config = QQuizKernelConfig(working_dir)
 
@@ -33,6 +34,7 @@ class QQuizKernel:
         self.answer = [""]
         self.hint = [""]
         self.guess = [["", ""]]
+        self.solved_levels = set() # todo: запоминать пройденные уровни
         self.__get_question()
         if bot:
             bot.sendMessage(text=self.config.intro_message, chat_id=chat_id)
@@ -73,12 +75,13 @@ class QQuizKernel:
 
     def get_hint(self):
         if self.hint[-1]:
-            return ",".join(self.hint)
+            return re.sub("(^|[.?!])\s*([a-zA-Zа-яА-я])", lambda p: p.group(0).upper(), ",".join(self.hint))
         else:
             return "Для этой загадки нет подсказок"
 
     def check_answer(self, answer):
         if answer.lower().replace('ё','е') in self.answer:
+            #self.solved_levels.add(self._last_question_num)
             return AnswerCorrectness.CORRECT
         for guess in self.guess:
             if answer.lower().replace('ё','е') == guess[0]:
@@ -102,7 +105,7 @@ class QQuizKernel:
     def get_all_levels(self):
         if self.config.change_level_step:
             levels = self.__list_levels()
-            return [level.split('-@') for level in levels[::self.config.change_level_step]]
+            return [level.split('-@') for level in levels[::self.config.change_level_step] if 'The End' not in level]
         else:
             return None
 
@@ -117,11 +120,12 @@ class QQuizKernel:
                 self._last_question_num = levels.index(name)
             else:
                 print('no such level', name,'in', levels)
+
     def reset(self):
         self._last_question_num = 0
 
     def get_answer(self):
         if self.config.allow_to_get_answer:
-            return self.answer[0]
+            return re.sub("(^|[.?!])\s*([a-zA-Zа-яА-я])", lambda p: p.group(0).upper(), self.answer[0])
         else:
             return "В данной игре нельзя посмотреть ответ"
