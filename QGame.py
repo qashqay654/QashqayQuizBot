@@ -6,6 +6,7 @@ from telegram.error import Unauthorized, ChatMigrated
 import yaml
 import threading
 import os
+import pickle
 from copy import deepcopy
 
 from QReadWrite import QReadWrite
@@ -25,16 +26,19 @@ class QGameConfig:
             self.user_db_path = config['user_db_path']
             self.no_spoilers_default = bool(int(config['no_spoilers_default']))
             self.admin_id = int(config['admin_id'])
-            try:
+            if 'game_of_the_day' in config:
                 self.game_of_the_day = config['game_of_the_day']
                 self.game_of_the_day_time = config['game_of_the_day_time']
-            except:
+                self.game_of_the_day_db_path = config['game_of_the_day_db_path']
+            else:
                 self.game_of_the_day = None
                 self.game_of_the_day_time = "12:00"
+                self.game_of_the_day_db_path = ''
 
 
 class QGame:
     __name__ = "QGame"
+    __version__ = 0.3
 
     def __init__(self, config_path: str):
         self.config = QGameConfig(config_path)
@@ -50,9 +54,12 @@ class QGame:
         self.game_of_day = None
         if self.config.game_of_the_day:
             path_dir = os.path.join(self.config.games_db_path, self.config.game_of_the_day, 'master')
-            self.game_of_day = QQuizKernel(path_dir, 0)
+            last_lev, message_buff = 0, []
+            if os.path.exists(self.config.game_of_the_day_db_path):
+                last_lev, message_buff = pickle.load(open(self.config.game_of_the_day_db_path, 'rb'))
+            self.game_of_day = QQuizKernel(path_dir, last_lev)
             self.__schedule_gotd()
-            self.gotd_prev_message = []
+            self.gotd_prev_message = message_buff
         self.input_event = self.__send_all_from_input()
         self.admin_text = ''
 
@@ -64,6 +71,9 @@ class QGame:
     def stop_polling(self):
         if hasattr(self, 'shed_event'):
             self.shed_event.set()
+        if self.config.game_of_the_day:
+            pickle.dump([self.game_of_day.last_question_num, self.gotd_prev_message],
+                        open(self.config.game_of_the_day_db_path, 'wb'))
         self.input_event.set()
         self.updater.stop()
 
@@ -91,11 +101,11 @@ class QGame:
             if 'answer_from_text' not in metadata.keys():
                 metadata['answer_from_text'] = True
             if 'version' not in metadata.keys():
-                metadata['version'] = 0.2
+                metadata['version'] = self.__version__
                 old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
                 metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
-            if metadata['version'] != 0.2:
-                metadata['version'] = 0.2
+            if metadata['version'] != self.__version__:
+                metadata['version'] = self.__version__
                 old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
                 metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
         return metadata
@@ -128,7 +138,7 @@ class QGame:
             metadata['message_stack'] = []
             metadata['game_of_day'] = True
             metadata['answer_from_text'] = True
-            metadata['version'] = 0.2
+            metadata['version'] = self.__version__
             reply_text = ("	Привет! Добро пожаловать в игру!\n"
                           "\n"
                           '/answer [ans] - Дать ответ на вопрос (/+tab ответ)\n'
@@ -222,7 +232,8 @@ class QGame:
 
         elif type(correctness) == str:
             metadata['message_stack'].append(
-                context.bot.sendMessage(chat_id=chat_id, text=correctness))
+                update.effective_message.reply_text(text=correctness))
+                #context.bot.sendMessage(chat_id=chat_id, text=correctness))
         else:
             self.logger.warning('Wrong answer type "%s"', correctness)
 
@@ -518,6 +529,9 @@ class QGame:
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
         metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
         update.effective_message.delete()
+        self.logger.info('User %s changed level to %s',
+                         update.effective_user,
+                         button)
 
     def __help(self, update, context):
         chat_id = update.effective_message.chat_id
@@ -585,8 +599,7 @@ class QGame:
                                                                   )
                     except Unauthorized as ua:
                         del user_data[user]
-                        print("User", user, "is cyka")
-
+                        self.logger.warning("User %s is deleted", user)
 
         chat_data = self.updater.dispatcher.chat_data
         for chat in list(chat_data):
@@ -601,14 +614,18 @@ class QGame:
                                                                   game_of_day=True)
                     except Unauthorized as ua:
                         del chat_data[chat]
-                        print("User", chat, "is cyka")
+                        self.logger.warning("Chat %s is deleted", chat)
                     except ChatMigrated as e:
                         chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
                         del chat_data[chat]
+                        self.logger.warning("Chat %s is migrated", chat)
                         self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
                                                                   e.new_chat_id, path,
                                                                   reply_markup=reply_markup,
                                                                   game_of_day=True)
+        pickle.dump([self.game_of_day.last_question_num, self.gotd_prev_message],
+                    open(self.config.game_of_the_day_db_path, 'wb'))
+        self.logger.info('Game of the day send')
 
     def __repeat_goth(self, update, context):
         chat_id = update.effective_message.chat_id
@@ -629,7 +646,6 @@ class QGame:
 
     def __schedule_gotd(self):
         schedule.every().day.at(self.config.game_of_the_day_time).do(self.__game_of_the_day_send)
-        #day.at(self.config.game_of_the_day_time)
         print("Scheduler set at " + self.config.game_of_the_day_time)
         self.shed_event = schedule.run_continuously()
 
@@ -639,12 +655,21 @@ class QGame:
         answer = ' '.join(context.args).lower()
         if not answer:
             self.gotd_prev_message.append(update.effective_message.reply_text(text="Укажи ответ аргументом после "
-                                                                                   "команды /dayquiz, например: "
-                                                                                   "/dayquiz 1984"))
+                                                                                   "команды /dq, например: "
+                                                                                   "/dq 1984"))
             return
 
         correctness = self.game_of_day.check_answer(answer)
+        self.logger.info('User %s answered %s in %s',
+                         update.effective_user,
+                         answer,
+                         "game of the day"
+                         )
         if correctness == AnswerCorrectness.CORRECT:
+            self.logger.info('User %s solved %s',
+                             update.effective_user,
+                             "game of the day"
+                             )
             self.gotd_prev_message.append(update.effective_message.reply_text(text="Правильно!"))
         elif type(correctness) == str:
             self.gotd_prev_message.append(
@@ -681,7 +706,7 @@ class QGame:
                         self.updater.bot.sendMessage(text=self.admin_text, chat_id=user)
                     except Unauthorized as ua:
                         del user_data[user]
-                        print("User", user, "is cyka")
+                        self.logger.warning("User %s is deleted", user)
             chat_data = self.updater.dispatcher.chat_data
             for chat in list(chat_data):
                 if chat_data[chat]:
@@ -689,11 +714,13 @@ class QGame:
                         self.updater.bot.sendMessage(text=self.admin_text, chat_id=chat)
                     except Unauthorized as ua:
                         del chat_data[chat]
-                        print("User", chat, "is cyka")
+                        self.logger.warning("Chat %s is deleted", chat)
                     except ChatMigrated as e:
                         chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
                         del chat_data[chat]
+                        self.logger.warning("Chat %s is migrated", chat)
                         self.updater.bot.sendMessage(text=self.admin_text, chat_id=e.new_chat_id)
+        self.logger.info("Admin message send %s", self.admin_text)
         self.admin_text = ''
 
     def __send_all_from_input(self):
@@ -707,7 +734,7 @@ class QGame:
                     if not message:
                         continue
                     confirm = ''
-                    while not confirm in ['yes', 'no']:
+                    while confirm not in ['yes', 'no']:
                         print("Are you sure? [yes|no]")
                         confirm = input()
                     if confirm == 'no':
@@ -721,7 +748,7 @@ class QGame:
                                 self.updater.bot.sendMessage(text=message, chat_id=user)
                             except Unauthorized as ua:
                                 del user_data[user]
-                                print("User", user, "is cyka")
+                                self.logger.warning("User %s is deleted", user)
                     chat_data = self.updater.dispatcher.chat_data
                     for chat in list(chat_data):
                         if chat_data[chat]:
@@ -729,12 +756,13 @@ class QGame:
                                 self.updater.bot.sendMessage(text=message, chat_id=chat)
                             except Unauthorized as ua:
                                 del chat_data[chat]
-                                print("User", chat, "is cyka")
+                                self.logger.warning("Chat %s is deleted", chat)
                             except ChatMigrated as e:
                                 chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
                                 del chat_data[chat]
+                                self.logger.warning("Chat %s is migrated", chat)
                                 self.updater.bot.sendMessage(text=message, chat_id=e.new_chat_id)
-
+                    self.logger.info("Admin message send %s", message)
         continuous_thread = MassiveSender()
         continuous_thread.daemon = True
         continuous_thread.start()
