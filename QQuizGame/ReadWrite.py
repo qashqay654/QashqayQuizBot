@@ -168,3 +168,6 @@ class ReadWrite:
     def read_from_file(file_path):
         with open(file_path, 'rb') as handle:
             return pickle.load(handle)
+
+
+# TODO: пора перетаскивать все на базу данных

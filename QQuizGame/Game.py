@@ -14,7 +14,21 @@ from QQuizGame import schedule
 from QQuizGame.QuizKernel import QuizKernel
 from QQuizGame.ReadWrite import ReadWrite
 from QQuizGame.Types import AnswerCorrectness
-from QQuizGame.logging_setup import setup_logger
+from QQuizGame.logging_setup import setup_logger, init_logging_db, parse_upd
+
+
+def check_meta(action_type):
+    def decorator(func):
+        def wrapper(class_self, update, context):
+            class_self.db.insert_one(parse_upd(update, action_type))
+            metadata = class_self.get_chat_meta(update, context)
+            if not metadata:
+                update.effective_message.reply_text("Видимо что-то сломалось. Введите /start, чтобы начать")
+                class_self.db.insert_one(parse_upd(update, "NoMeta"))
+                return
+            return func(class_self, update, context)
+        return wrapper
+    return decorator
 
 
 class GameConfig:
@@ -40,7 +54,7 @@ class GameConfig:
 
 class Game:
     __name__ = "Game"
-    __version__ = 0.4
+    __version__ = 1.0
 
     def __init__(self, config_path: str):
         self.config = GameConfig(config_path)
@@ -50,7 +64,9 @@ class Game:
 
         self.logger = setup_logger(__name__,
                                    self.config.logger_path,
-                                   logging.INFO)
+                                   logging.DEBUG)
+        self.db = init_logging_db()
+
         self.game_of_day = None
         if self.config.game_of_the_day:
             path_dir = os.path.join(self.config.games_db_path, self.config.game_of_the_day, 'master')
@@ -77,7 +93,7 @@ class Game:
         self.input_event.set()
         self.updater.stop()
 
-    def __get_chat_meta(self, update, context):
+    def get_chat_meta(self, update, context):
         if update.effective_message.chat.type == 'private':
             metadata = context.user_data
         else:
@@ -110,11 +126,29 @@ class Game:
                 metadata['quiz'][metadata['game_type']] = QuizKernel(*old_data)
         return metadata
 
-    @staticmethod
-    def __check_meta(metadata, update):
-        if not metadata:
-            update.effective_message.reply_text("Видимо что-то сломалось. Введите /start, чтобы начать")
-        return metadata
+    def save_reply(self, metadata=None, messages=None, goth=False):
+        buffer = []
+        check = False
+        if metadata:
+            buffer = metadata['message_stack']
+            check = metadata['no_spoiler']
+        if goth:
+            buffer = self.gotd_prev_message
+            check = True
+
+        if type(messages) == list:
+            for message in messages:
+                if check:
+                    buffer.append(message)
+                self.db.insert_one(parse_upd(message, "Send"))
+                if goth:
+                    self.gotd_prev_message.append(message)
+        else:
+            if check:
+                buffer.append(messages)
+            self.db.insert_one(parse_upd(messages, "Send"))
+            if goth:
+                self.gotd_prev_message.append(messages)
 
     def __get_game_meta(self, game_metadata):
         try:
@@ -124,7 +158,7 @@ class Game:
         return old_data
 
     def __start(self, update, context):
-        metadata = self.__get_chat_meta(update, context)
+        metadata = self.get_chat_meta(update, context)
         chat_id = update.effective_message.chat_id
 
         if not metadata:
@@ -154,9 +188,10 @@ class Game:
                           "\n"
                           "	Удачи!\n")
 
-            metadata['message_stack'].append(
-                context.bot.sendMessage(chat_id=chat_id, text=reply_text))
             self.__set_game(update, context)
+
+            self.save_reply(metadata, context.bot.sendMessage(chat_id=chat_id, text=reply_text))
+            self.db.insert_one(parse_upd(update, "NewUser"))
             self.logger.info('New user added %s', update.effective_user)
         else:
             # этот странный трюк нужен в случае, если мы что-то обновили в игровом движке
@@ -164,35 +199,36 @@ class Game:
             metadata['quiz'][metadata['game_type']] = QuizKernel(*old_data)
 
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
 
+            self.save_reply(metadata, ReadWrite.send(question, context.bot, chat_id, path))
+            self.db.insert_one(parse_upd(update, "NewUserRepeat"))
+
+    @check_meta("Repeat")
     def __question(self, update, context):
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
         chat_id = update.effective_message.chat_id
-        metadata['message_stack'].append(update.effective_message)
+        self.save_reply(metadata, update.effective_message)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
 
-        metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
+        self.save_reply(metadata, ReadWrite.send(question, context.bot, chat_id, path))
 
+    @check_meta("Hint")
     def __hint(self, update, context):
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
+
         chat_id = update.effective_message.chat_id
 
         help_reply = metadata['quiz'][metadata['game_type']].get_hint()
-        metadata['message_stack'].append(update.effective_message)
-        metadata['message_stack'].append(context.bot.sendMessage(chat_id=chat_id, text=help_reply))
 
+        self.save_reply(metadata, update.effective_message)
+        self.save_reply(metadata, context.bot.sendMessage(chat_id=chat_id, text=help_reply))
+
+    @check_meta("Answer")
     def __answer(self, update, context):
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
 
         chat_id = update.effective_message.chat_id
-        metadata['message_stack'].append(update.effective_message)
+        self.save_reply(metadata, update.effective_message)
 
         if update.effective_message.text.startswith('/'):
             answer = ' '.join(context.args).lower()
@@ -201,8 +237,8 @@ class Game:
             if not metadata['answer_from_text']:
                 return
         if not answer:
-            metadata['message_stack'].append(
-                update.effective_message.reply_text(text="Укажи ответ аргументом после команды /answer, например: "
+            self.save_reply(metadata,
+                            update.effective_message.reply_text(text="Укажи ответ аргументом после команды /answer, например: "
                                                          "/answer 1984.\nЛайфхак: чтобы каждый раз не печатать слово "
                                                          "answer, можно воспользоваться комбинацией /+tab ответ"))
             return
@@ -228,28 +264,31 @@ class Game:
 
             metadata['quiz'][metadata['game_type']].next()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
+
+            self.save_reply(metadata, ReadWrite.send(question, context.bot, chat_id, path))
 
         elif type(correctness) == str:
-            metadata['message_stack'].append(
+            self.save_reply(metadata,
                 update.effective_message.reply_text(text=correctness))
             # context.bot.sendMessage(chat_id=chat_id, text=correctness))
         else:
             self.logger.warning('Wrong answer type "%s"', correctness)
 
+    @check_meta("GetAnswer")
     def __get_answer(self, update, context):
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        metadata = self.get_chat_meta(update, context)
         chat_id = update.effective_message.chat_id
-        context.bot.sendMessage(text=metadata['quiz'][metadata['game_type']].get_answer(), chat_id=chat_id)
+        self.save_reply(metadata,
+                        context.bot.sendMessage(text=metadata['quiz'][metadata['game_type']].get_answer(),
+                                                chat_id=chat_id))
 
+    @check_meta("Error")
     def __error(self, update, context):
         """Log Errors caused by Updates."""
         self.logger.warning('Update "%s" caused error "%s"', update, context.error)
 
+    @check_meta("Reset")
     def __reset(self, update, context):
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
         update.effective_message.reply_text(self.__reset_text(),
                                             reply_markup=self.__reset_markup())
 
@@ -264,9 +303,10 @@ class Game:
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
 
+    @check_meta("RecetButton")
     def __reset_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        metadata = self.get_chat_meta(update, context)
         chat_id = update.effective_message.chat_id
         if not metadata:
             return
@@ -275,36 +315,32 @@ class Game:
             update.effective_message.delete()
             metadata['quiz'][metadata['game_type']].reset()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
+            self.save_reply(metadata, ReadWrite.send(question, context.bot, chat_id, path))
             self.logger.info('User %s reset %s',
                              update.effective_user,
                              metadata['game_type'])
         else:
             update.effective_message.delete()
 
+    @check_meta("SetGame")
     def __set_game(self, update, context):
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        metadata = self.get_chat_meta(update, context)
         chat_id = update.effective_message.chat_id
-        if not metadata:
-            return
         reply_markup = ReadWrite.parse_game_folders_markup(self.config.games_db_path)
-        context.bot.sendMessage(text=self.__settings_game_text(metadata['game_type'], False),
+        self.save_reply(metadata,
+                        context.bot.sendMessage(text=self.__settings_game_text(metadata['game_type'], False),
                                 chat_id=chat_id,
-                                reply_markup=reply_markup)
+                                reply_markup=reply_markup))
 
+    @check_meta("Settings")
     def __settings(self, update, context):
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
-        update.effective_message.reply_text(self.__settings_main_text(),
-                                            reply_markup=self.__settings_main_markup())
+        metadata = self.get_chat_meta(update, context)
+        self.save_reply(metadata, update.effective_message.reply_text(self.__settings_main_text(),
+                                            reply_markup=self.__settings_main_markup()))
 
+    @check_meta("SettingsMain")
     def __settings_main(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
-
         query.edit_message_text(text=self.__settings_main_text(),
                                 reply_markup=self.__settings_main_markup())
 
@@ -324,11 +360,10 @@ class Game:
         return reply_markup
 
     # Game mode settings
+    @check_meta("GameMode")
     def __settings_game(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
         reply_markup = ReadWrite.parse_game_folders_markup(self.config.games_db_path)
         query.edit_message_text(text=self.__settings_game_text(metadata['game_type']),
                                 reply_markup=reply_markup)
@@ -340,12 +375,11 @@ class Game:
         else:
             return "Доступные игры"
 
+    @check_meta("GameModeButton")
     def __settings_game_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        metadata = self.get_chat_meta(update, context)
         chat_id = update.effective_message.chat_id
-        if not metadata:
-            return
         button = query.data.split('-')[-1]
         if button in metadata['quiz'].keys():
             metadata['game_type'] = button
@@ -362,17 +396,16 @@ class Game:
                          update.effective_user,
                          metadata['game_type'])
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-        metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
+        self.save_reply(metadata, ReadWrite.send(question, context.bot, chat_id, path))
 
         query.answer(text='Теперь играем в ' + button)
         update.effective_message.delete()
 
     # Disappearing mode settings
+    @check_meta("SpoilerMode")
     def __settings_spoiler(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
         query.edit_message_text(text=self.__settings_spoiler_text(metadata['no_spoiler']),
                                 reply_markup=self.__settings_spoiler_markup())
 
@@ -390,11 +423,10 @@ class Game:
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
 
+    @check_meta("SpoilerModeButton")
     def __settings_spoiler_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
         button = bool(int(query.data.split('-')[-1]))
         metadata['no_spoiler'] = button
         query.answer(text="Режим no spoilers включен" if button else "Режим no spoilers выключен")
@@ -407,11 +439,10 @@ class Game:
                          button)
 
     # Game of the day settings
+    @check_meta("GOTD")
     def __settings_gotd(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
         query.edit_message_text(text=self.__settings_gotd_text(metadata['game_of_day']),
                                 reply_markup=self.__settings_gotd_markup())
 
@@ -429,11 +460,11 @@ class Game:
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
 
+    @check_meta("GOTDButton")
     def __settings_gotd_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
+
         button = bool(int(query.data.split('-')[-1]))
         metadata['game_of_day'] = button
         query.answer(text="Режим загадки дня включен" if button else "Режим загадки дня выключен")
@@ -446,11 +477,10 @@ class Game:
                          button)
 
     # Answer message settings
+    @check_meta("AnswerMode")
     def __settings_answer_message(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
         query.edit_message_text(text=self.__settings_answer_message_text(metadata['answer_from_text']),
                                 reply_markup=self.__settings_answer_message_markup())
 
@@ -470,11 +500,10 @@ class Game:
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
 
+    @check_meta("AnswerModeButton")
     def __settings_answer_message_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
-        if not metadata:
-            return
+        metadata = self.get_chat_meta(update, context)
         button = bool(int(query.data.split('-')[-1]))
         metadata['answer_from_text'] = button
         query.answer(text="Ответы будут приниматься из сообщений" if button else "Ответ только после команды /answer")
@@ -486,8 +515,8 @@ class Game:
                          update.effective_user,
                          button)
 
-    @staticmethod
-    def __settings_done(update, context):
+    @check_meta("Done")
+    def __settings_done(self, update, context):
         query = update.callback_query
         query.answer(text='Done')
         update.effective_message.delete()
@@ -509,8 +538,9 @@ class Game:
         reply_markup = InlineKeyboardMarkup(keyboard)
         return reply_markup
 
+    @check_meta("SetLevel")
     def __set_level(self, update, context):  # todo: добавить кнопку exit
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        metadata = self.get_chat_meta(update, context)
         levels_markup = self.__levels_markup(metadata['quiz'][metadata['game_type']])
         if levels_markup:
             update.effective_message.reply_text('Выберите уровень',
@@ -518,21 +548,22 @@ class Game:
         else:
             update.effective_message.reply_text("Выбор уровня невозможен в этом режиме игры")
 
+    @check_meta("SetLevelButton")
     def __levels_button(self, update, context):
         query = update.callback_query
-        metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
+        metadata = self.get_chat_meta(update, context)
         chat_id = update.effective_message.chat_id
-        if not metadata:
-            return
+
         button = '-'.join(query.data.split('-')[1:])
         metadata['quiz'][metadata['game_type']].set_level_by_name(button)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-        metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
+        self.save_reply(metadata, ReadWrite.send(question, context.bot, chat_id, path))
         update.effective_message.delete()
         self.logger.info('User %s changed level to %s',
                          update.effective_user,
                          button)
 
+    @check_meta("Help")
     def __help(self, update, context):
         chat_id = update.effective_message.chat_id
         context.bot.sendMessage(text=(
@@ -553,8 +584,8 @@ class Game:
             "Если хочешь начать игру сначала, то введи /reset, но учти, что тогда потеряются все сохранения.\n"
         ), chat_id=chat_id)
 
-    @staticmethod
-    def __credentials(update, context):
+    @check_meta("Credits")
+    def __credentials(self, update, context):
         chat_id = update.effective_message.chat_id
         context.bot.sendMessage(text="""Данный бот создавался только с развлекательными целями и не несёт никакой 
         коммерческой выгоды. Некоторые из игр в этом боте полностью скопированы с других ресурсов с загадками: Манул 
@@ -592,11 +623,11 @@ class Game:
                     user_data[user]['game_of_day'] = True
                 if user_data[user]['game_of_day']:
                     try:
-                        self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
+                        self.save_reply(messages=ReadWrite.send(question, self.updater.bot,
                                                                  user, path,
                                                                  reply_markup=reply_markup,
                                                                  game_of_day=True
-                                                                 )
+                                                                 ), goth=True)
                     except Unauthorized as ua:
                         del user_data[user]
                         self.logger.warning("User %s is deleted", user)
@@ -608,10 +639,10 @@ class Game:
                     chat_data[chat]['game_of_day'] = True
                 if chat_data[chat]['game_of_day']:
                     try:
-                        self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
+                        self.save_reply(messages=ReadWrite.send(question, self.updater.bot,
                                                                  chat, path,
                                                                  reply_markup=reply_markup,
-                                                                 game_of_day=True)
+                                                                 game_of_day=True), goth=True)
                     except Unauthorized as ua:
                         del chat_data[chat]
                         self.logger.warning("Chat %s is deleted", chat)
@@ -619,27 +650,30 @@ class Game:
                         chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
                         del chat_data[chat]
                         self.logger.warning("Chat %s is migrated", chat)
-                        self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
+                        self.save_reply(messages=ReadWrite.send(question, self.updater.bot,
                                                                  e.new_chat_id, path,
                                                                  reply_markup=reply_markup,
-                                                                 game_of_day=True)
+                                                                 game_of_day=True), goth=True)
         pickle.dump([self.game_of_day.last_question_num, self.gotd_prev_message],
                     open(self.config.game_of_the_day_db_path, 'wb'))
+
         self.logger.info('Game of the day send')
 
     def __repeat_goth(self, update, context):
+        self.db.insert_one(parse_upd(update, "GothRepeat"))
         chat_id = update.effective_message.chat_id
         keyboard = [[InlineKeyboardButton("Посмотреть ответ", callback_data='gotd_answ'),
                      InlineKeyboardButton("Скрыть", callback_data='done')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         question, path = self.game_of_day.get_new_question()
-        self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
+        self.save_reply(messages=ReadWrite.send(question, self.updater.bot,
                                                  chat_id, path,
                                                  reply_markup=reply_markup,
                                                  game_of_day=True
-                                                 )
+                                                 ), goth=True)
 
     def __game_of_the_day_button(self, update, context):
+        self.db.insert_one(parse_upd(update, "GothAnswerButton"))
         query = update.callback_query
         if self.game_of_day:
             query.answer(text=self.game_of_day.get_hint(), show_alert=True)
@@ -650,13 +684,14 @@ class Game:
         self.shed_event = schedule.run_continuously()
 
     def __gotd_answer(self, update, context):
+        self.db.insert_one(parse_upd(update, "GothAnswerAttempt"))
         chat_id = update.effective_message.chat_id
 
         answer = ' '.join(context.args).lower()
         if not answer:
-            self.gotd_prev_message.append(update.effective_message.reply_text(text="Укажи ответ аргументом после "
+            self.save_reply(messages=update.effective_message.reply_text(text="Укажи ответ аргументом после "
                                                                                    "команды /dq, например: "
-                                                                                   "/dq 1984"))
+                                                                                   "/dq 1984"), goth=True)
             return
 
         correctness = self.game_of_day.check_answer(answer)
@@ -670,14 +705,15 @@ class Game:
                              update.effective_user,
                              "game of the day"
                              )
-            self.gotd_prev_message.append(update.effective_message.reply_text(text="Правильно!"))
+            self.save_reply(messages=update.effective_message.reply_text(text="Правильно!"), goth=True)
         elif type(correctness) == str:
-            self.gotd_prev_message.append(
-                context.bot.sendMessage(chat_id=chat_id, text=correctness))
+            self.save_reply(messages=
+                context.bot.sendMessage(chat_id=chat_id, text=correctness), goth=True)
         else:
             self.logger.warning('Wrong answer type "%s"', correctness)
 
     def __send_all_from_admin(self, update, context):
+        self.db.insert_one(parse_upd(update, "AdminMessage"))
         user_id = update.effective_message.from_user.id
         chat_id = update.effective_message.chat_id
         if user_id == self.config.admin_id:
@@ -692,9 +728,11 @@ class Game:
                         ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             context.bot.sendMessage(text=text, chat_id=chat_id, reply_markup=reply_markup)
+            self.db.insert_one(parse_upd(update, "AdminMessage"))
             self.admin_text = text
 
     def __send_all_from_admin_button(self, update, context):
+        self.db.insert_one(parse_upd(update, "AdminMessageButton"))
         query = update.callback_query
         button = bool(int(query.data.split('-')[-1]))
         query.edit_message_text(text=self.admin_text)
@@ -703,7 +741,8 @@ class Game:
             for user in list(user_data):
                 if user_data[user]:
                     try:
-                        self.updater.bot.sendMessage(text=self.admin_text, chat_id=user)
+                        self.db.insert_one(parse_upd(
+                            self.updater.bot.sendMessage(text=self.admin_text, chat_id=user), 'Send'))
                     except Unauthorized as ua:
                         del user_data[user]
                         self.logger.warning("User %s is deleted", user)
@@ -711,7 +750,8 @@ class Game:
             for chat in list(chat_data):
                 if chat_data[chat]:
                     try:
-                        self.updater.bot.sendMessage(text=self.admin_text, chat_id=chat)
+                        self.db.insert_one(parse_upd(
+                            self.updater.bot.sendMessage(text=self.admin_text, chat_id=chat), 'Send'))
                     except Unauthorized as ua:
                         del chat_data[chat]
                         self.logger.warning("Chat %s is deleted", chat)
@@ -719,7 +759,8 @@ class Game:
                         chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
                         del chat_data[chat]
                         self.logger.warning("Chat %s is migrated", chat)
-                        self.updater.bot.sendMessage(text=self.admin_text, chat_id=e.new_chat_id)
+                        self.db.insert_one(parse_upd(
+                            self.updater.bot.sendMessage(text=self.admin_text, chat_id=e.new_chat_id), 'Send'))
         self.logger.info("Admin message send %s", self.admin_text)
         self.admin_text = ''
 
@@ -745,7 +786,7 @@ class Game:
                     for user in list(user_data):
                         if user_data[user]:
                             try:
-                                self.updater.bot.sendMessage(text=message, chat_id=user)
+                                self.db.insert_one(parse_upd(self.updater.bot.sendMessage(text=message, chat_id=user), 'Send'))
                             except Unauthorized as ua:
                                 del user_data[user]
                                 self.logger.warning("User %s is deleted", user)
@@ -753,7 +794,8 @@ class Game:
                     for chat in list(chat_data):
                         if chat_data[chat]:
                             try:
-                                self.updater.bot.sendMessage(text=message, chat_id=chat)
+                                self.db.insert_one(parse_upd(
+                                    self.updater.bot.sendMessage(text=message, chat_id=chat), 'Send'))
                             except Unauthorized as ua:
                                 del chat_data[chat]
                                 self.logger.warning("Chat %s is deleted", chat)
@@ -761,7 +803,8 @@ class Game:
                                 chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
                                 del chat_data[chat]
                                 self.logger.warning("Chat %s is migrated", chat)
-                                self.updater.bot.sendMessage(text=message, chat_id=e.new_chat_id)
+                                self.db.insert_one(parse_upd(
+                                    self.updater.bot.sendMessage(text=message, chat_id=e.new_chat_id), 'Send'))
                     self.logger.info("Admin message send %s", message)
 
         continuous_thread = MassiveSender()

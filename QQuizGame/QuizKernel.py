@@ -82,6 +82,7 @@ class QuizKernel:
     def check_answer(self, answer):
         if answer.lower().replace('ё', 'е') in self.answer:
             # self.solved_levels.add(self._last_question_num)
+            self.solved_levels.add(self.last_question_num)
             return AnswerCorrectness.CORRECT
         for guess in self.guess:
             if answer.lower().replace('ё', 'е') == guess[0]:
