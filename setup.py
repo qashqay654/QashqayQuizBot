@@ -9,5 +9,5 @@ setup(
     author='qashqay',
     author_email='qashqay.sol@yandex.ru',
     description='',
-    install_requires="python-telegram-bot>=12.0.0b1"
+    install_requires=["python-telegram-bot>=12.0.0b1", "natsort"]
 )
