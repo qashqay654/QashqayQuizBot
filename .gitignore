@@ -1,5 +1,7 @@
-./game
-./logs
-./users_data
-./__pycache__
-./.idea
+#Do not track games
+game/
+logs/
+users_data/
+__pycache__/
+.idea/
+texts/
