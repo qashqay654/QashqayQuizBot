@@ -11,13 +11,13 @@ from telegram.error import Unauthorized, ChatMigrated
 from telegram.ext import Updater, CommandHandler, PicklePersistence, CallbackQueryHandler, MessageHandler, Filters
 
 from QQuizGame import schedule
-from QQuizGame.QQuizKernel import QQuizKernel
-from QQuizGame.QReadWrite import QReadWrite
-from QQuizGame.QTypes import AnswerCorrectness
+from QQuizGame.QuizKernel import QuizKernel
+from QQuizGame.ReadWrite import ReadWrite
+from QQuizGame.Types import AnswerCorrectness
 from QQuizGame.logging_setup import setup_logger
 
 
-class QGameConfig:
+class GameConfig:
     def __init__(self, config):
         with open(config, 'r') as handle:
             config = yaml.load(handle, Loader=yaml.BaseLoader)
@@ -38,12 +38,12 @@ class QGameConfig:
                 self.game_of_the_day_db_path = ''
 
 
-class QGame:
-    __name__ = "QGame"
-    __version__ = 0.3
+class Game:
+    __name__ = "Game"
+    __version__ = 0.4
 
     def __init__(self, config_path: str):
-        self.config = QGameConfig(config_path)
+        self.config = GameConfig(config_path)
         puzzles_db = PicklePersistence(filename=self.config.user_db_path)
         self.updater = Updater(self.config.token, use_context=True, persistence=puzzles_db)
         self.init_dispatcher(self.updater.dispatcher)
@@ -57,7 +57,7 @@ class QGame:
             last_lev, message_buff = 0, []
             if os.path.exists(self.config.game_of_the_day_db_path):
                 last_lev, message_buff = pickle.load(open(self.config.game_of_the_day_db_path, 'rb'))
-            self.game_of_day = QQuizKernel(path_dir, last_lev)
+            self.game_of_day = QuizKernel(path_dir, last_lev)
             self.__schedule_gotd()
             self.gotd_prev_message = message_buff
         self.input_event = self.__send_all_from_input()
@@ -89,7 +89,7 @@ class QGame:
             if 'quiz' not in metadata.keys():
                 metadata['quiz'] = {}
                 path_dir = os.path.join(self.config.games_db_path, metadata['game_type'], 'master')
-                metadata['quiz'][metadata['game_type']] = QQuizKernel(path_dir,
+                metadata['quiz'][metadata['game_type']] = QuizKernel(path_dir,
                                                                       context.bot,
                                                                       update.effective_message.chat_id)
             if 'no_spoiler' not in metadata.keys():
@@ -103,11 +103,11 @@ class QGame:
             if 'version' not in metadata.keys():
                 metadata['version'] = self.__version__
                 old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
-                metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
+                metadata['quiz'][metadata['game_type']] = QuizKernel(*old_data)
             if metadata['version'] != self.__version__:
                 metadata['version'] = self.__version__
                 old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
-                metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
+                metadata['quiz'][metadata['game_type']] = QuizKernel(*old_data)
         return metadata
 
     @staticmethod
@@ -129,9 +129,9 @@ class QGame:
 
         if not metadata:
             metadata['game_type'] = self.config.default_game
-            metadata['quiz'] = defaultdict(QQuizKernel)
+            metadata['quiz'] = defaultdict(QuizKernel)
             path_dir = os.path.join(self.config.games_db_path, metadata['game_type'], 'master')
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(path_dir, last_question=0)
+            metadata['quiz'][metadata['game_type']] = QuizKernel(path_dir, last_question=0)
             metadata['quiz_data'] = (path_dir, 0)
             metadata['no_spoiler'] = self.config.no_spoilers_default \
                 if update.effective_message.chat.type != 'private' else False
@@ -161,10 +161,10 @@ class QGame:
         else:
             # этот странный трюк нужен в случае, если мы что-то обновили в игровом движке
             old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
+            metadata['quiz'][metadata['game_type']] = QuizKernel(*old_data)
 
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
+            metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
 
     def __question(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -174,7 +174,7 @@ class QGame:
         metadata['message_stack'].append(update.effective_message)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
 
-        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
+        metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
 
     def __hint(self, update, context):
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
@@ -228,7 +228,7 @@ class QGame:
 
             metadata['quiz'][metadata['game_type']].next()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
+            metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
 
         elif type(correctness) == str:
             metadata['message_stack'].append(
@@ -275,7 +275,7 @@ class QGame:
             update.effective_message.delete()
             metadata['quiz'][metadata['game_type']].reset()
             question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-            metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
+            metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
             self.logger.info('User %s reset %s',
                              update.effective_user,
                              metadata['game_type'])
@@ -287,7 +287,7 @@ class QGame:
         chat_id = update.effective_message.chat_id
         if not metadata:
             return
-        reply_markup = QReadWrite.parse_game_folders_markup(self.config.games_db_path)
+        reply_markup = ReadWrite.parse_game_folders_markup(self.config.games_db_path)
         context.bot.sendMessage(text=self.__settings_game_text(metadata['game_type'], False),
                                 chat_id=chat_id,
                                 reply_markup=reply_markup)
@@ -329,7 +329,7 @@ class QGame:
         metadata = self.__check_meta(self.__get_chat_meta(update, context), update)
         if not metadata:
             return
-        reply_markup = QReadWrite.parse_game_folders_markup(self.config.games_db_path)
+        reply_markup = ReadWrite.parse_game_folders_markup(self.config.games_db_path)
         query.edit_message_text(text=self.__settings_game_text(metadata['game_type']),
                                 reply_markup=reply_markup)
 
@@ -350,11 +350,11 @@ class QGame:
         if button in metadata['quiz'].keys():
             metadata['game_type'] = button
             old_data = self.__get_game_meta(metadata['quiz'][metadata['game_type']])
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(*old_data)
+            metadata['quiz'][metadata['game_type']] = QuizKernel(*old_data)
         else:
             metadata['game_type'] = button
             path_dir = os.path.join(self.config.games_db_path, metadata['game_type'], 'master')
-            metadata['quiz'][metadata['game_type']] = QQuizKernel(path_dir,
+            metadata['quiz'][metadata['game_type']] = QuizKernel(path_dir,
                                                                   0,
                                                                   context.bot,
                                                                   update.effective_message.chat_id)
@@ -362,7 +362,7 @@ class QGame:
                          update.effective_user,
                          metadata['game_type'])
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
+        metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
 
         query.answer(text='Теперь играем в ' + button)
         update.effective_message.delete()
@@ -527,7 +527,7 @@ class QGame:
         button = '-'.join(query.data.split('-')[1:])
         metadata['quiz'][metadata['game_type']].set_level_by_name(button)
         question, path = metadata['quiz'][metadata['game_type']].get_new_question()
-        metadata['message_stack'] += QReadWrite.send(question, context.bot, chat_id, path)
+        metadata['message_stack'] += ReadWrite.send(question, context.bot, chat_id, path)
         update.effective_message.delete()
         self.logger.info('User %s changed level to %s',
                          update.effective_user,
@@ -592,7 +592,7 @@ class QGame:
                     user_data[user]['game_of_day'] = True
                 if user_data[user]['game_of_day']:
                     try:
-                        self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
+                        self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
                                                                   user, path,
                                                                   reply_markup=reply_markup,
                                                                   game_of_day=True
@@ -608,7 +608,7 @@ class QGame:
                     chat_data[chat]['game_of_day'] = True
                 if chat_data[chat]['game_of_day']:
                     try:
-                        self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
+                        self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
                                                                   chat, path,
                                                                   reply_markup=reply_markup,
                                                                   game_of_day=True)
@@ -619,7 +619,7 @@ class QGame:
                         chat_data[e.new_chat_id] = deepcopy(chat_data[chat])
                         del chat_data[chat]
                         self.logger.warning("Chat %s is migrated", chat)
-                        self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
+                        self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
                                                                   e.new_chat_id, path,
                                                                   reply_markup=reply_markup,
                                                                   game_of_day=True)
@@ -633,7 +633,7 @@ class QGame:
                      InlineKeyboardButton("Скрыть", callback_data='done')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         question, path = self.game_of_day.get_new_question()
-        self.gotd_prev_message += QReadWrite.send(question, self.updater.bot,
+        self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
                                                   chat_id, path,
                                                   reply_markup=reply_markup,
                                                   game_of_day=True

@@ -5,11 +5,11 @@ import numpy as np
 import yaml
 from natsort import natsorted
 
-from QQuizGame.QReadWrite import QReadWrite
-from QQuizGame.QTypes import AnswerCorrectness, FileType
+from QQuizGame.ReadWrite import ReadWrite
+from QQuizGame.Types import AnswerCorrectness, FileType
 
 
-class QQuizKernelConfig:
+class QuizKernelConfig:
     def __init__(self, game_mode: str):
         with open(os.path.join(game_mode, 'config.yaml'), 'r') as handle:
             config = yaml.load(handle, Loader=yaml.BaseLoader)
@@ -19,13 +19,12 @@ class QQuizKernelConfig:
             self.intro_message = config['intro_message']
 
 
-class QQuizKernel:
+class QuizKernel:
 
     def __init__(self, working_dir: str, last_question=0, bot=None, chat_id=None):
 
-        # print("Game initialized")
         self.working_dir = working_dir
-        self.config = QQuizKernelConfig(working_dir)
+        self.config = QuizKernelConfig(working_dir)
 
         self._last_question_num = last_question
         self.puzzle_dir = os.path.join(self.working_dir,
@@ -50,8 +49,8 @@ class QQuizKernel:
     def __get_question(self):
         levels = self.__list_levels()
         self.puzzle_dir = os.path.join(self.working_dir, levels[self._last_question_num])
-        self.question = QReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'question.pickle'))
-        pre_answer = QReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'answer.pickle'))
+        self.question = ReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'question.pickle'))
+        pre_answer = ReadWrite.read_from_file(os.path.join(self.puzzle_dir, 'answer.pickle'))
         self.answer.clear()
         self.hint.clear()
         self.guess.clear()

@@ -2,7 +2,7 @@ import os
 import pickle
 import sys
 
-from QQuizGame.QTypes import FileType
+from QQuizGame.Types import FileType
 
 
 def make_new_game(name):

@@ -4,10 +4,10 @@ from collections import defaultdict
 import yaml
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, PicklePersistence, CallbackQueryHandler
 
-from QQuizGame.QReadWrite import QReadWrite
+from QQuizGame.ReadWrite import ReadWrite
 from QQuizGame.logging_setup import setup_logger
 
-class QAuthorConfig:
+class AuthorConfig:
     working_path = ""
     default_game = ""
     logger_path = ""
@@ -27,11 +27,11 @@ class QAuthorConfig:
             self.user_db_path = config['user_db_path']
 
 
-class QAuthor:
-    __name__ = "QAuthor"
+class Author:
+    __name__ = "Author"
 
     def __init__(self, config_path: str):
-        self.config = QAuthorConfig(config_path)
+        self.config = AuthorConfig(config_path)
 
         puzzles_db = PicklePersistence(filename=self.config.user_db_path)
         self.updater = Updater(self.config.token, use_context=True, persistence=puzzles_db)
@@ -116,10 +116,10 @@ class QAuthor:
                                                      "to change previous sentence.")
             return
         if metadata['action'] == 'question':
-            QReadWrite.push_puzzle(update.message, metadata['puzzle_buffer'][-1])
+            ReadWrite.push_puzzle(update.message, metadata['puzzle_buffer'][-1])
         elif metadata['action'] == 'answer':
             if update.message.text:
-                QReadWrite.push_answer(update.message, metadata['answer_buffer'][-1])
+                ReadWrite.push_answer(update.message, metadata['answer_buffer'][-1])
             else:
                 update.message.reply_text(
                     text="In current version answer can be only a text")
@@ -132,7 +132,7 @@ class QAuthor:
             return
         metadata['action'] = None
         update.effective_message.reply_text(text='Thanx!')
-        filename = QReadWrite.save_to_file(metadata['puzzle_buffer'][-1], metadata['answer_buffer'][-1],
+        filename = ReadWrite.save_to_file(metadata['puzzle_buffer'][-1], metadata['answer_buffer'][-1],
                                            update.effective_message.from_user, metadata,
                                            puzzle_dir=self.config.working_path,
                                            bot=context.bot,
@@ -162,7 +162,7 @@ class QAuthor:
                     update.effective_message.reply_text(
                         text="Name: " + " ".join(metadata['name'].split('_')))
 
-                QReadWrite.send(metadata['puzzle_buffer'][-1], context.bot,
+                ReadWrite.send(metadata['puzzle_buffer'][-1], context.bot,
                                 update.effective_message.chat_id)
 
             else:
@@ -263,7 +263,7 @@ class QAuthor:
 
     def __set_game_folder(self, update, context):
         update.effective_message.reply_text(text='Choose game',
-                                            reply_markup=QReadWrite.parse_game_folders_markup(self.config.working_path,
+                                            reply_markup=ReadWrite.parse_game_folders_markup(self.config.working_path,
                                                                                               True))
 
     def __game_folder_button(self, update, context):

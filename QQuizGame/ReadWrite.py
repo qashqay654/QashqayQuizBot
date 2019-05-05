@@ -5,13 +5,13 @@ import uuid
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from QQuizGame import QTypes
-from QQuizGame.QTypes import FileType
+from QQuizGame import Types
+from QQuizGame.Types import FileType
 
-sys.modules['QTypes'] = QTypes
+sys.modules['QTypes'] = Types
 
 
-class QReadWrite:
+class ReadWrite:
     def __init__(self):
         pass
 
@@ -42,7 +42,7 @@ class QReadWrite:
 
     @staticmethod
     def push_puzzle(message, buffer):
-        mes_type, is_media, first_field, second_field = QReadWrite.get_message_meta(message)
+        mes_type, is_media, first_field, second_field = ReadWrite.get_message_meta(message)
         buffer.append([mes_type, first_field, second_field, is_media, ''])
 
     @staticmethod

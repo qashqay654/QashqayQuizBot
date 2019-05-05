@@ -4,8 +4,8 @@ import signal
 import threading
 import time
 
-from QQuizGame.QAuthor import QAuthor
-from QQuizGame.QGame import QGame
+from QQuizGame.Author import Author
+from QQuizGame.Game import Game
 
 
 class BotThread(threading.Thread):
@@ -36,10 +36,10 @@ def main():
     signal.signal(signal.SIGTERM, service_shutdown)
     signal.signal(signal.SIGINT, service_shutdown)
     try:
-        game = QGame("./configs/qgame_config.yaml")
+        game = Game("./configs/qgame_config.yaml")
         game_tread = BotThread(game)
 
-        auth = QAuthor("./configs/qauthor_config.yaml")
+        auth = Author("./configs/qauthor_config.yaml")
         auth_tread = BotThread(auth)
 
         game_tread.start()
