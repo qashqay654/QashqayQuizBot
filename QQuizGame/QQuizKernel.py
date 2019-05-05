@@ -1,11 +1,12 @@
 import os
 import re
-import yaml
+
 import numpy as np
+import yaml
 from natsort import natsorted
 
-from QReadWrite import QReadWrite
-from QTypes import AnswerCorrectness, FileType
+from QQuizGame.QReadWrite import QReadWrite
+from QQuizGame.QTypes import AnswerCorrectness, FileType
 
 
 class QQuizKernelConfig:
@@ -22,7 +23,7 @@ class QQuizKernel:
 
     def __init__(self, working_dir: str, last_question=0, bot=None, chat_id=None):
 
-        #print("Game initialized")
+        # print("Game initialized")
         self.working_dir = working_dir
         self.config = QQuizKernelConfig(working_dir)
 
@@ -34,7 +35,7 @@ class QQuizKernel:
         self.answer = [""]
         self.hint = [""]
         self.guess = [["", ""]]
-        self.solved_levels = set() # todo: запоминать пройденные уровни
+        self.solved_levels = set()  # todo: запоминать пройденные уровни
         self.__get_question()
         if bot:
             bot.sendMessage(text=self.config.intro_message, chat_id=chat_id)
@@ -44,7 +45,7 @@ class QQuizKernel:
 
     def __list_levels(self):
         return natsorted([dr for dr in os.listdir(self.working_dir)
-                   if os.path.isdir(os.path.join(self.working_dir, dr)) and not dr.startswith('-')])
+                          if os.path.isdir(os.path.join(self.working_dir, dr)) and not dr.startswith('-')])
 
     def __get_question(self):
         levels = self.__list_levels()
@@ -57,11 +58,11 @@ class QQuizKernel:
         for answ in pre_answer:
             if answ.startswith('?') and len(answ[1:].split('?')) == 2:
                 temp = answ[1:].split('?')
-                self.guess.append([temp[0].strip().lower().replace('ё','е'), temp[1].strip()])
+                self.guess.append([temp[0].strip().lower().replace('ё', 'е'), temp[1].strip()])
             elif answ.startswith("<") and answ.endswith(">"):
                 self.hint.append(answ[1:-1].lower().strip())
             else:
-                self.answer.append(answ.lower().strip().replace('ё','е'))
+                self.answer.append(answ.lower().strip().replace('ё', 'е'))
         if not len(self.answer):
             self.answer.append("")
         if not len(self.hint):
@@ -80,11 +81,11 @@ class QQuizKernel:
             return "Для этой загадки нет подсказок"
 
     def check_answer(self, answer):
-        if answer.lower().replace('ё','е') in self.answer:
-            #self.solved_levels.add(self._last_question_num)
+        if answer.lower().replace('ё', 'е') in self.answer:
+            # self.solved_levels.add(self._last_question_num)
             return AnswerCorrectness.CORRECT
         for guess in self.guess:
-            if answer.lower().replace('ё','е') == guess[0]:
+            if answer.lower().replace('ё', 'е') == guess[0]:
                 return guess[1]
         else:
             return "Нет"
@@ -119,7 +120,7 @@ class QQuizKernel:
             if name in levels:
                 self._last_question_num = levels.index(name)
             else:
-                print('no such level', name,'in', levels)
+                print('no such level', name, 'in', levels)
 
     def reset(self):
         self._last_question_num = 0

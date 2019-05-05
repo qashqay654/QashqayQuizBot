@@ -1,9 +1,14 @@
 import os
 import pickle
+import sys
 import uuid
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from QTypes import FileType
+from QQuizGame import QTypes
+from QQuizGame.QTypes import FileType
+
+sys.modules['QTypes'] = QTypes
 
 
 class QReadWrite:
@@ -53,7 +58,8 @@ class QReadWrite:
                 message_stack.append(
                     bot.sendMessage(chat_id, text="Загадка дня: " + " ".join(name.split('_'))))
             else:
-                message_stack.append(bot.sendMessage(chat_id, text=str(int(num)+1) + ". " + " ".join(name.split('_'))))
+                message_stack.append(
+                    bot.sendMessage(chat_id, text=str(int(num) + 1) + ". " + " ".join(name.split('_'))))
         reply_markup_ = None
         for i, message in enumerate(buffer):
             message_type = message[0]
@@ -134,8 +140,7 @@ class QReadWrite:
 
         for i, msg in enumerate(message):
             if save_media and msg[3]:
-
-                unique_filename = uuid.uuid4().hex#os.path.join(puzzle_dir_, msg[1])
+                unique_filename = uuid.uuid4().hex  # os.path.join(puzzle_dir_, msg[1])
                 bot.getFile(msg[1]).download(os.path.join(puzzle_dir_, unique_filename))
                 message[i][1] = unique_filename
                 message[i][-1] = os.path.join(puzzle_dir_, unique_filename)
@@ -163,6 +168,3 @@ class QReadWrite:
     def read_from_file(file_path):
         with open(file_path, 'rb') as handle:
             return pickle.load(handle)
-
-
-

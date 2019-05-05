@@ -1,18 +1,20 @@
 import logging
-from collections import defaultdict
-from telegram.ext import Updater, CommandHandler, PicklePersistence, CallbackQueryHandler, MessageHandler, Filters
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import Unauthorized, ChatMigrated
-import yaml
-import threading
 import os
 import pickle
+import threading
+from collections import defaultdict
 from copy import deepcopy
 
-from QReadWrite import QReadWrite
-from QTypes import AnswerCorrectness
-from QQuizKernel import QQuizKernel
-import schedule
+import yaml
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import Unauthorized, ChatMigrated
+from telegram.ext import Updater, CommandHandler, PicklePersistence, CallbackQueryHandler, MessageHandler, Filters
+
+from QQuizGame import schedule
+from QQuizGame.QQuizKernel import QQuizKernel
+from QQuizGame.QReadWrite import QReadWrite
+from QQuizGame.QTypes import AnswerCorrectness
+from QQuizGame.logging_setup import setup_logger
 
 
 class QGameConfig:
@@ -45,12 +47,10 @@ class QGame:
         puzzles_db = PicklePersistence(filename=self.config.user_db_path)
         self.updater = Updater(self.config.token, use_context=True, persistence=puzzles_db)
         self.init_dispatcher(self.updater.dispatcher)
-        logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                            level=logging.INFO,
-                            filename=self.config.logger_path,
-                            filemode='a'
-                            )
-        self.logger = logging.getLogger(__name__)
+
+        self.logger = setup_logger(__name__,
+                                   self.config.logger_path,
+                                   logging.INFO)
         self.game_of_day = None
         if self.config.game_of_the_day:
             path_dir = os.path.join(self.config.games_db_path, self.config.game_of_the_day, 'master')
@@ -233,7 +233,7 @@ class QGame:
         elif type(correctness) == str:
             metadata['message_stack'].append(
                 update.effective_message.reply_text(text=correctness))
-                #context.bot.sendMessage(chat_id=chat_id, text=correctness))
+            # context.bot.sendMessage(chat_id=chat_id, text=correctness))
         else:
             self.logger.warning('Wrong answer type "%s"', correctness)
 
@@ -763,6 +763,7 @@ class QGame:
                                 self.logger.warning("Chat %s is migrated", chat)
                                 self.updater.bot.sendMessage(text=message, chat_id=e.new_chat_id)
                     self.logger.info("Admin message send %s", message)
+
         continuous_thread = MassiveSender()
         continuous_thread.daemon = True
         continuous_thread.start()
@@ -814,4 +815,3 @@ class QGame:
         # TODO: add random talk
 
 # todo: прописать нормальный логгер вместо принтов
-

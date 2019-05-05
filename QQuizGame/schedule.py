@@ -22,8 +22,8 @@ Features:
 import datetime
 import functools
 import logging
-import time
 import threading
+import time
 
 logger = logging.getLogger('schedule')
 
@@ -106,6 +106,7 @@ class Scheduler(object):
 
 class Job(object):
     """A periodic job as used by `Scheduler`."""
+
     def __init__(self, interval):
         self.interval = interval  # pause interval * unit between runs
         self.job_func = None  # the job job_func to run
@@ -125,7 +126,7 @@ class Job(object):
             return t.strftime("%Y-%m-%d %H:%M:%S") if t else '[never]'
 
         timestats = '(last run: %s, next run: %s)' % (
-                    format_time(self.last_run), format_time(self.next_run))
+            format_time(self.last_run), format_time(self.next_run))
 
         job_func_name = self.job_func.__name__
         args = [repr(x) for x in self.job_func.args]
@@ -135,14 +136,14 @@ class Job(object):
 
         if self.at_time is not None:
             return 'Every %s %s at %s do %s %s' % (
-                   self.interval,
-                   self.unit[:-1] if self.interval == 1 else self.unit,
-                   self.at_time, call_repr, timestats)
+                self.interval,
+                self.unit[:-1] if self.interval == 1 else self.unit,
+                self.at_time, call_repr, timestats)
         else:
             return 'Every %s %s do %s %s' % (
-                   self.interval,
-                   self.unit[:-1] if self.interval == 1 else self.unit,
-                   call_repr, timestats)
+                self.interval,
+                self.unit[:-1] if self.interval == 1 else self.unit,
+                call_repr, timestats)
 
     @property
     def second(self):

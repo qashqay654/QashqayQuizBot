@@ -1,8 +1,8 @@
-import sys
-import pickle
 import os
+import pickle
+import sys
 
-from QTypes import FileType
+from QQuizGame.QTypes import FileType
 
 
 def make_new_game(name):

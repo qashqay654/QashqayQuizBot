@@ -1,11 +1,11 @@
 #!/home/sologub10/anaconda3/bin/python
 
-import threading
 import signal
+import threading
 import time
 
-from QAuthor import QAuthor
-from QGame import QGame
+from QQuizGame.QAuthor import QAuthor
+from QQuizGame.QGame import QGame
 
 
 class BotThread(threading.Thread):
@@ -45,8 +45,7 @@ def main():
         game_tread.start()
         auth_tread.start()
 
-        while True:
-            time.sleep(0.5)
+        while True:            time.sleep(0.5)
 
     except ServiceExit:
         game_tread.shutdown_flag.set()

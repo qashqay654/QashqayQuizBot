@@ -1,10 +1,11 @@
 import logging
 from collections import defaultdict
+
 import yaml
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, PicklePersistence, CallbackQueryHandler
 
-from QReadWrite import QReadWrite
-
+from QQuizGame.QReadWrite import QReadWrite
+from QQuizGame.logging_setup import setup_logger
 
 class QAuthorConfig:
     working_path = ""
@@ -35,12 +36,10 @@ class QAuthor:
         puzzles_db = PicklePersistence(filename=self.config.user_db_path)
         self.updater = Updater(self.config.token, use_context=True, persistence=puzzles_db)
         self.init_dispatcher(self.updater.dispatcher)
-        logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                            level=logging.INFO,
-                            filename=self.config.logger_path,
-                            filemode='a'
-                            )
-        self.logger = logging.getLogger(__name__)
+
+        self.logger = setup_logger(__name__,
+                                   self.config.logger_path,
+                                   logging.INFO)
 
     def start_polling(self, demon=False):
         self.updater.start_polling()
@@ -190,7 +189,6 @@ class QAuthor:
                     text=answs + "\n" + guess + "\n" + hint)
         else:
             update.effective_message.reply_text(text="Nothing in buffer")
-
 
     @staticmethod
     def __check_name(name):
