@@ -40,3 +40,6 @@ if __name__ == "__main__":
     else:
         name = ' '.join(args)
         make_new_game(name)
+
+
+# TODO: make whole game generator
