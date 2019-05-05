@@ -8,5 +8,6 @@ setup(
     license='Apache License 2.0',
     author='qashqay',
     author_email='qashqay.sol@yandex.ru',
-    description=''
+    description='',
+    install_requires="python-telegram-bot>=12.0.0b1"
 )
