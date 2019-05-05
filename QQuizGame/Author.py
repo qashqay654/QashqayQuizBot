@@ -7,6 +7,7 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Pickl
 from QQuizGame.ReadWrite import ReadWrite
 from QQuizGame.logging_setup import setup_logger
 
+
 class AuthorConfig:
     working_path = ""
     default_game = ""
@@ -133,11 +134,11 @@ class Author:
         metadata['action'] = None
         update.effective_message.reply_text(text='Thanx!')
         filename = ReadWrite.save_to_file(metadata['puzzle_buffer'][-1], metadata['answer_buffer'][-1],
-                                           update.effective_message.from_user, metadata,
-                                           puzzle_dir=self.config.working_path,
-                                           bot=context.bot,
-                                           save_media=self.config.save_media
-                                           )
+                                          update.effective_message.from_user, metadata,
+                                          puzzle_dir=self.config.working_path,
+                                          bot=context.bot,
+                                          save_media=self.config.save_media
+                                          )
         self.logger.info('New puzzle saved from %s, filename %s',
                          update.effective_user, filename)
 
@@ -163,7 +164,7 @@ class Author:
                         text="Name: " + " ".join(metadata['name'].split('_')))
 
                 ReadWrite.send(metadata['puzzle_buffer'][-1], context.bot,
-                                update.effective_message.chat_id)
+                               update.effective_message.chat_id)
 
             else:
                 update.effective_message.reply_text(text="Nothing in buffer")
@@ -264,7 +265,7 @@ class Author:
     def __set_game_folder(self, update, context):
         update.effective_message.reply_text(text='Choose game',
                                             reply_markup=ReadWrite.parse_game_folders_markup(self.config.working_path,
-                                                                                              True))
+                                                                                             True))
 
     def __game_folder_button(self, update, context):
         query = update.callback_query

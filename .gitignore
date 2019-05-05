@@ -5,5 +5,12 @@ users_data/
 __pycache__/
 .idea/
 texts/
+build/
+QQuizGame/build
+dist/
+QQuizGame/dist
+QQuizGame.egg-info/
+QQuizGame/QQuizGame.egg-info
+
 qauthor_config.yaml
 qgame_config.yaml

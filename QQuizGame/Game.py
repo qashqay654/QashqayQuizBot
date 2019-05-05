@@ -90,8 +90,8 @@ class Game:
                 metadata['quiz'] = {}
                 path_dir = os.path.join(self.config.games_db_path, metadata['game_type'], 'master')
                 metadata['quiz'][metadata['game_type']] = QuizKernel(path_dir,
-                                                                      context.bot,
-                                                                      update.effective_message.chat_id)
+                                                                     context.bot,
+                                                                     update.effective_message.chat_id)
             if 'no_spoiler' not in metadata.keys():
                 metadata['no_spoiler'] = self.config.no_spoilers_default
             if 'message_stack' not in metadata.keys():
@@ -355,9 +355,9 @@ class Game:
             metadata['game_type'] = button
             path_dir = os.path.join(self.config.games_db_path, metadata['game_type'], 'master')
             metadata['quiz'][metadata['game_type']] = QuizKernel(path_dir,
-                                                                  0,
-                                                                  context.bot,
-                                                                  update.effective_message.chat_id)
+                                                                 0,
+                                                                 context.bot,
+                                                                 update.effective_message.chat_id)
         self.logger.info('User %s set new game type %s',
                          update.effective_user,
                          metadata['game_type'])
@@ -593,10 +593,10 @@ class Game:
                 if user_data[user]['game_of_day']:
                     try:
                         self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
-                                                                  user, path,
-                                                                  reply_markup=reply_markup,
-                                                                  game_of_day=True
-                                                                  )
+                                                                 user, path,
+                                                                 reply_markup=reply_markup,
+                                                                 game_of_day=True
+                                                                 )
                     except Unauthorized as ua:
                         del user_data[user]
                         self.logger.warning("User %s is deleted", user)
@@ -609,9 +609,9 @@ class Game:
                 if chat_data[chat]['game_of_day']:
                     try:
                         self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
-                                                                  chat, path,
-                                                                  reply_markup=reply_markup,
-                                                                  game_of_day=True)
+                                                                 chat, path,
+                                                                 reply_markup=reply_markup,
+                                                                 game_of_day=True)
                     except Unauthorized as ua:
                         del chat_data[chat]
                         self.logger.warning("Chat %s is deleted", chat)
@@ -620,9 +620,9 @@ class Game:
                         del chat_data[chat]
                         self.logger.warning("Chat %s is migrated", chat)
                         self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
-                                                                  e.new_chat_id, path,
-                                                                  reply_markup=reply_markup,
-                                                                  game_of_day=True)
+                                                                 e.new_chat_id, path,
+                                                                 reply_markup=reply_markup,
+                                                                 game_of_day=True)
         pickle.dump([self.game_of_day.last_question_num, self.gotd_prev_message],
                     open(self.config.game_of_the_day_db_path, 'wb'))
         self.logger.info('Game of the day send')
@@ -634,10 +634,10 @@ class Game:
         reply_markup = InlineKeyboardMarkup(keyboard)
         question, path = self.game_of_day.get_new_question()
         self.gotd_prev_message += ReadWrite.send(question, self.updater.bot,
-                                                  chat_id, path,
-                                                  reply_markup=reply_markup,
-                                                  game_of_day=True
-                                                  )
+                                                 chat_id, path,
+                                                 reply_markup=reply_markup,
+                                                 game_of_day=True
+                                                 )
 
     def __game_of_the_day_button(self, update, context):
         query = update.callback_query
