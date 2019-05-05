@@ -1,0 +1,6 @@
+working_path:       # path to store new quizzes
+default_game:       # default game to store new
+logger_path:        #
+token:              # telegram bot token
+save_media:         # even to store media of quizzes (nesesary if you are using different tokens for author and game)
+user_db_path:       # path to store users data

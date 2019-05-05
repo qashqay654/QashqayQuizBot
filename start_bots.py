@@ -1,4 +1,4 @@
-#!/home/sologub10/anaconda3/bin/python
+#!python
 
 import signal
 import threading

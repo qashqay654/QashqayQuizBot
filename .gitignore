@@ -5,3 +5,5 @@ users_data/
 __pycache__/
 .idea/
 texts/
+qauthor_config.yaml
+qgame_config.yaml

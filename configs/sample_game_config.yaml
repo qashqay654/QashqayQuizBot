@@ -1,0 +1,10 @@
+games_db_path:            # path to the game folder
+default_game:             # new user will start with that game
+logger_path:              # logging path
+token:                    # your telegram bot token
+user_db_path:             # path to store user data
+no_spoilers_default:      # even to start game with no spoiler mode
+admin_id:                 # admin id for massive messaging
+game_of_the_day:          # optional path to game of the day folder
+game_of_the_day_time:     # time of game of the day send
+game_of_the_day_db_path:  # path to store game of the day data
